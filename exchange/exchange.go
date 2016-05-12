@@ -49,6 +49,6 @@ type StatsRequest struct {
 
 type InnerState struct {
 	sync.RWMutex
-	DockerPaths     map[string]string
-	DockerStorage   map[string]interface{}
+	DockerPaths   map[string]string
+	DockerStorage map[string]interface{}
 }

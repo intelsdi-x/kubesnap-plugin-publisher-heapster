@@ -8,7 +8,7 @@ Here is a sample task manifest utilizing the heapster publisher plugin:
   version: 1
   schedule:
     type: "simple"
-    interval: "1s"
+    interval: "10s"
   workflow:
     collect:
       metrics:
@@ -24,10 +24,12 @@ Here is a sample task manifest utilizing the heapster publisher plugin:
             -
               plugin_name: "heapster"
               config:
-                stats_depth: 9
+                stats_depth: 0
                 server_port: 8777
+                stats_span: "10m"
 ```
 
 Explanation:
 * this will setup heapster publisher to expose REST server at port :8777
-* publisher will keep a list of 9 most recent stats collected per each docker 
+* publisher will keep a list of stats spanning 10 minutes
+* no limit on number of stats (`stats_depth: 0` means _no limit_)
