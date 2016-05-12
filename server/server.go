@@ -95,13 +95,12 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	}
 	var statsJson map[string]interface{}
 	if err := json.Unmarshal(body, &statsJson); err != nil {
-		logger.Errorf("got this error: %v \n", err)
 		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-		w.WriteHeader(422) // unprocessable entity
+		w.WriteHeader(422)
 		if err := json.NewEncoder(w).Encode(err); err != nil {
 			panic(err)
 		}
-		panic(err)
+		return
 	}
 	var stats exchange.StatsRequest
 	json.Unmarshal(body, &stats)
