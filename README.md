@@ -27,9 +27,44 @@ Here is a sample task manifest utilizing the heapster publisher plugin:
                 stats_depth: 0
                 server_port: 8777
                 stats_span: "10m"
+                export_tmpl_file: "builtin"
 ```
 
 Explanation:
 * this will setup heapster publisher to expose REST server at port :8777
 * publisher will keep a list of stats spanning 10 minutes
 * no limit on number of stats (`stats_depth: 0` means _no limit_)
+* will use builtin template file for metrics; (might have given a path
+to specific template json)
+
+### Known issues
+
+Heapster publisher REST server is unable to restart when the plugin is
+reloaded. REST server is started at first call to `PublishMetrics()`.
+
+The workaround is to submit a bootstrap task that will keep the 
+publisher loaded, e.g.:
+```
+  version: 1
+  schedule:
+    type: "simple"
+    interval: "1h"
+  workflow:
+    collect:
+      metrics:
+        /intel/linux/mock/foo: {}
+      process:
+        -
+          plugin_name: "passthru"
+          process: null
+          publish:
+            -
+              plugin_name: "heapster"
+              config:
+                stats_depth: 0
+                server_port: 8777
+                stats_span: "10m"
+                export_tmpl_file: "builtin"
+```
+but note that the config given in bootstrap's manifest will be kept for
+all further invocations of publisher.

@@ -36,10 +36,10 @@ import (
 	"github.com/intelsdi-x/snap/core/ctypes"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
+	"io/ioutil"
 )
 
 const (
@@ -54,9 +54,11 @@ const (
 	defServerPort      = 8777
 	defStatsSpanStr    = "10m"
 	defStatsSpan       = 10 * time.Minute
+	defExportTmplFile = "builtin"
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
 	cfgStatsSpan       = "stats_span"
+	cfgExportTmplFile = "export_tmpl_file"
 )
 
 type core struct {
@@ -65,6 +67,7 @@ type core struct {
 	once           sync.Once
 	statsDepth     int
 	statsSpan      time.Duration
+	exportTmplFile string
 	metricTemplate MetricTemplate
 }
 
@@ -86,9 +89,6 @@ func NewCore() (*core, error) {
 		logger:     logger,
 		statsDepth: defStatsDepth,
 		statsSpan:  defStatsSpan,
-	}
-	if err := core.loadMetricTemplate(); err != nil {
-		return nil, err
 	}
 	return &core, nil
 }
@@ -128,7 +128,8 @@ func (f *core) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
 	rule1, _ := cpolicy.NewIntegerRule(cfgServerPort, false, defServerPort)
 	rule2, _ := cpolicy.NewIntegerRule(cfgStatsDepth, false, defStatsDepth)
 	rule3, _ := cpolicy.NewStringRule(cfgStatsSpan, false, defStatsSpanStr)
-	p.Add(rule1, rule2, rule3)
+	rule4, _ := cpolicy.NewStringRule(cfgExportTmplFile, false, defExportTmplFile)
+	p.Add(rule1, rule2, rule3, rule4)
 	cp.Add([]string{}, p)
 	return cp, nil
 }
@@ -165,29 +166,12 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 		} else {
 			f.statsSpan = statsSpan
 		}
+		f.exportTmplFile = configMap.GetStr(cfgExportTmplFile, defExportTmplFile)
+		if err := f.loadMetricTemplate(); err != nil {
+			f.logger.Fatalf("couldn't load metric template: %s", err)
+		}
 		server.EnsureStarted(f.state, serverPort)
 	})
-}
-
-type InMetrics []plugin.MetricType
-
-func (m InMetrics) Len() int {
-	return len(m)
-}
-
-func (m InMetrics) Swap(i, j int) {
-	m[i], m[j] = m[j], m[i]
-}
-
-func (m InMetrics) Less(i, j int) bool {
-	l := m[i].Namespace().Strings()
-	r := m[j].Namespace().Strings()
-	for k := 0; k < len(l) && k < len(r); k++ {
-		if delta := strings.Compare(l[k], r[k]); delta != 0 {
-			return delta < 0
-		}
-	}
-	return len(l) < len(r)
 }
 
 type MetricTemplate struct {
@@ -235,8 +219,14 @@ func (f *core) loadMetricTemplate() error {
 }
 
 func (f *core) loadTemplateSource() (string, error) {
-	templateSrc := builtinMetricTemplate
-	return templateSrc, nil
+	if f.exportTmplFile == defExportTmplFile {
+		templateSrc := builtinMetricTemplate
+		return templateSrc, nil
+	} else if templateSrc, err := ioutil.ReadFile(f.exportTmplFile); err != nil {
+		return "", err
+	} else {
+		return string(templateSrc), nil
+	}
 }
 
 func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string, bool) {
@@ -251,7 +241,6 @@ func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string
 }
 
 func (f *core) processMetrics(metrics []plugin.MetricType) {
-	sort.Sort(InMetrics(metrics))
 	dockerPaths := f.state.DockerPaths
 	dockerStorage := f.state.DockerStorage
 	temporaryStats := map[string]map[string]interface{}{}

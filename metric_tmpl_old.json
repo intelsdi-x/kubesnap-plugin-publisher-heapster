@@ -1,0 +1,54 @@
+{
+"id": "!!",
+"name": "!!",
+"aliases": [
+],
+"namespace": "docker",
+"labels": {
+},
+  "subcontainers": [],
+"spec": {
+ "creation_time": "$/creation_time",
+ "labels": {
+ },
+ "has_cpu": true,
+ "cpu": {
+ },
+ "has_memory": true,
+ "memory": {
+ },
+ "has_network": true,
+ "has_filesystem": false,
+ "has_diskio": true,
+ "has_custom_metrics": true,
+ "custom_metrics":[],
+ "image": "$/image_name"
+},
+"stats": [
+ {
+  "timestamp": "!!",
+  "custom_metrics": {
+   "SNAP": [
+   ]
+  },
+  "cpu": {
+   "usage": {
+    "total": "/cpu_stats/cpu_usage/total_usage"
+   }
+  },
+  "memory": {
+   "usage": "/memory_stats/usage/usage",
+   "container_data": {
+    "pgfault": "/memory_stats/stats/pgfault",
+    "pgmajfault": "/memory_stats/stats/pgmajfault"
+   }
+  },
+  "network": {
+   "rx_bytes": "??",
+   "rx_errors": "??",
+   "tx_bytes": "??",
+   "tx_errors": "??"
+  }
+ }
+]
+}
