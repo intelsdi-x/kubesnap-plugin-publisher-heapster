@@ -39,6 +39,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
@@ -51,8 +52,11 @@ const (
 	dockerMetricPrefix = "/intel/linux/docker"
 	defStatsDepth      = 10
 	defServerPort      = 8777
+	defStatsSpanStr    = "10m"
+	defStatsSpan       = 10 * time.Minute
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
+	cfgStatsSpan       = "stats_span"
 )
 
 type core struct {
@@ -60,6 +64,7 @@ type core struct {
 	state          *exchange.InnerState
 	once           sync.Once
 	statsDepth     int
+	statsSpan      time.Duration
 	metricTemplate MetricTemplate
 }
 
@@ -80,6 +85,7 @@ func NewCore() (*core, error) {
 		state:      NewInnerState(),
 		logger:     logger,
 		statsDepth: defStatsDepth,
+		statsSpan:  defStatsSpan,
 	}
 	if err := core.loadMetricTemplate(); err != nil {
 		return nil, err
@@ -121,7 +127,8 @@ func (f *core) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
 	p := cpolicy.NewPolicyNode()
 	rule1, _ := cpolicy.NewIntegerRule(cfgServerPort, false, defServerPort)
 	rule2, _ := cpolicy.NewIntegerRule(cfgStatsDepth, false, defStatsDepth)
-	p.Add(rule1, rule2)
+	rule3, _ := cpolicy.NewStringRule(cfgStatsSpan, false, defStatsSpanStr)
+	p.Add(rule1, rule2, rule3)
 	cp.Add([]string{}, p)
 	return cp, nil
 }
@@ -129,6 +136,14 @@ func (f *core) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
 func (m ConfigMap) GetInt(key string, defValue int) int {
 	if value, gotIt := m[key]; gotIt {
 		return value.(ctypes.ConfigValueInt).Value
+	} else {
+		return defValue
+	}
+}
+
+func (m ConfigMap) GetStr(key string, defValue string) string {
+	if value, gotIt := m[key]; gotIt {
+		return value.(ctypes.ConfigValueStr).Value
 	} else {
 		return defValue
 	}
@@ -144,6 +159,12 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 		}()
 		f.statsDepth = configMap.GetInt(cfgStatsDepth, defStatsDepth)
 		serverPort := configMap.GetInt(cfgServerPort, defServerPort)
+		statsSpanStr := configMap.GetStr(cfgStatsSpan, defStatsSpanStr)
+		if statsSpan, err := time.ParseDuration(statsSpanStr); err != nil {
+			f.statsSpan = defStatsSpan
+		} else {
+			f.statsSpan = statsSpan
+		}
 		server.EnsureStarted(f.state, serverPort)
 	})
 }
@@ -189,7 +210,7 @@ func (f *core) loadMetricTemplate() error {
 	templateObj := templateRef.(map[string]interface{})
 	extractMapping := func(obj interface{}) map[string]string {
 		mapping := map[string]string{}
-		tmplWalker := jsonutil.NewObjWalker(obj)
+		tmplWalker := util.NewObjWalker(obj)
 		tmplWalker.Walk("/", func(target string, info os.FileInfo, _ error) error {
 			if source, isStr := info.Sys().(string); isStr &&
 				strings.HasPrefix(source, "/") {
@@ -199,7 +220,7 @@ func (f *core) loadMetricTemplate() error {
 		})
 		return mapping
 	}
-	statsListRef, _ := jsonutil.NewObjWalker(templateObj).Seek("/stats")
+	statsListRef, _ := util.NewObjWalker(templateObj).Seek("/stats")
 	statsList := statsListRef.([]interface{})
 	var statsObj interface{}
 	statsObj, statsList = statsList[0], statsList[1:]
@@ -277,12 +298,12 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		ns := metric.Namespace().String()
 		if sourcePath, isExpectedMetric := validateDockerMetric(dockerPath, ns); isExpectedMetric {
 			targetPath := f.metricTemplate.mapToDocker[sourcePath]
-			metricParent, _ := jsonutil.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
+			metricParent, _ := util.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
 			metricParentMap := metricParent.(map[string]interface{})
 			metricParentMap[filepath.Base(targetPath)] = metric.Data()
 		} else {
 			//TODO: handle custom metrics
-			//snapMetricsList, _ := jsonutil.NewObjWalker(statsObj).Seek("/stats/custom_metrics/SNAP")
+			//snapMetricsList, _ := util.NewObjWalker(statsObj).Seek("/stats/custom_metrics/SNAP")
 			//oneMetric := map[string]interface{} {}
 			//oneMetric["name"] = dockerMetricPrefix + "/"+ sourcePath
 			//oneMetric["type"] = "gauge"
@@ -296,9 +317,29 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return
 		}
 		statsList := dockerObj["stats"].([]interface{})
-		if len(statsList) == f.statsDepth {
-			statsList = statsList[:copy(statsList, statsList[1:])]
+		// make sure we don't overflow  statsDepth nor  statsSpan when
+		//new  statsObj is added
+		makeRoomForStats := func() {
+			validOfs := 0
+			if f.statsDepth > 0 && len(statsList) == f.statsDepth {
+				validOfs++
+			}
+			if f.statsSpan <= 0 {
+				statsList = statsList[:copy(statsList, statsList[validOfs:])]
+				return
+			}
+			nuStamp, _ := util.ParseTime(statsObj["timestamp"].(string))
+			for validOfs < len(statsList) {
+				ckStamp, _ := util.ParseTime(statsList[validOfs].(map[string]interface{})["timestamp"].(string))
+				span := nuStamp.Sub(ckStamp)
+				if span <= f.statsSpan {
+					break
+				}
+				validOfs++
+			}
+			statsList = statsList[:copy(statsList, statsList[validOfs:])]
 		}
+		makeRoomForStats()
 		statsList = append(statsList, statsObj)
 		dockerObj["stats"] = statsList
 	}

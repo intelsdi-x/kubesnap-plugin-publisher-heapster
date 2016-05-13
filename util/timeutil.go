@@ -17,20 +17,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package util
 
 import (
-	"os"
-
-	"github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/publisher"
-	"github.com/intelsdi-x/snap/control/plugin"
+	"time"
 )
 
-func main() {
-	meta := publisher.Meta()
-	if publisherCore, err := publisher.NewCore(); err != nil {
-		panic(err)
-	} else {
-		plugin.Start(meta, publisherCore, os.Args[1])
-	}
+// ParseTime parses string representation of time as produced by Time.String().
+func ParseTime(str string) (time.Time, error) {
+	return time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", str)
 }

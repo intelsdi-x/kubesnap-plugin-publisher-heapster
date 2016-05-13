@@ -30,7 +30,9 @@ import (
 	"io/ioutil"
 
 	"github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/exchange"
+	"github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/util"
 	"sync"
+	"time"
 )
 
 var logger *log.Logger
@@ -49,31 +51,68 @@ func ServerFunc(state *exchange.InnerState, port int) {
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
 }
 
+func copyFlat(data map[string]interface{}) map[string]interface{} {
+	res := map[string]interface{}{}
+	for k, v := range data {
+		res[k] = v
+	}
+	return res
+}
+
+func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest) interface{} {
+	state.RLock()
+	defer state.RUnlock()
+	ref := state.DockerStorage
+	res := map[string]map[string]interface{}{}
+	for dockerName, dockerObj := range ref {
+		dockerCopy := copyFlat(dockerObj.(map[string]interface{}))
+		statsList := dockerCopy["stats"].([]interface{})
+		statsCopy := make([]interface{}, 0, len(statsList))
+		for _, statsObj := range statsList {
+			statsMap := statsObj.(map[string]interface{})
+			ckStamp, _ := util.ParseTime(statsMap["timestamp"].(string))
+			if ckStamp.Before(stats.Start) || ckStamp.After(stats.End) {
+				continue
+			}
+			statsCopy = append(statsCopy, statsObj)
+			if stats.NumStats > 0 && len(statsCopy) >= stats.NumStats {
+				break
+			}
+		}
+		dockerCopy["stats"] = statsCopy
+		res[dockerName] = dockerCopy
+	}
+	return res
+}
+
 func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
-	_, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
+	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
 		panic(err)
 	}
 	if err := r.Body.Close(); err != nil {
 		panic(err)
 	}
-	//var stats exchange.StatsRequest
-	//if err := json.Unmarshal(body, &stats); err != nil {
-	//	logger.Errorf("got this error: %v \n", err)
-	//	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-	//	w.WriteHeader(422) // unprocessable entity
-	//	if err := json.NewEncoder(w).Encode(err); err != nil {
-	//		panic(err)
-	//	}
-	//	return
-	//}
-
-	//t := RepoCreateTodo(todo)
-	state.RLock()
-	defer state.RUnlock()
+	var statsJson map[string]interface{}
+	if err := json.Unmarshal(body, &statsJson); err != nil {
+		w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+		w.WriteHeader(422)
+		if err := json.NewEncoder(w).Encode(err); err != nil {
+			panic(err)
+		}
+		return
+	}
+	var stats exchange.StatsRequest
+	json.Unmarshal(body, &stats)
+	if _, gotStart := statsJson["start"]; !gotStart {
+		stats.Start = time.Time{}
+	}
+	if _, gotEnd := statsJson["end"]; !gotEnd {
+		stats.End = time.Now()
+	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
-	res := state.DockerStorage
+	res := buildStatsResponse(state, &stats)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		panic(err)
 	}
