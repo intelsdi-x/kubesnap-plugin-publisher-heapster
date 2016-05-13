@@ -29,7 +29,7 @@ const builtinMetricTemplate = `{
 },
   "subcontainers": [],
 "spec": {
- "creation_time": "$/creation_time",
+ "creation_time": "/creation_time",
  "labels": {
  },
  "has_cpu": true,
@@ -43,7 +43,7 @@ const builtinMetricTemplate = `{
  "has_diskio": true,
  "has_custom_metrics": true,
  "custom_metrics":[],
- "image": "$/image_name"
+ "image": "/image_name"
 },
 "stats": [
  {

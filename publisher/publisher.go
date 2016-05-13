@@ -34,12 +34,12 @@ import (
 	"github.com/intelsdi-x/snap/control/plugin"
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
 	"github.com/intelsdi-x/snap/core/ctypes"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"io/ioutil"
 )
 
 const (
@@ -54,11 +54,11 @@ const (
 	defServerPort      = 8777
 	defStatsSpanStr    = "10m"
 	defStatsSpan       = 10 * time.Minute
-	defExportTmplFile = "builtin"
+	defExportTmplFile  = "builtin"
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
 	cfgStatsSpan       = "stats_span"
-	cfgExportTmplFile = "export_tmpl_file"
+	cfgExportTmplFile  = "export_tmpl_file"
 )
 
 type core struct {
@@ -177,6 +177,7 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 type MetricTemplate struct {
 	source      string
 	statsSource string
+	mapToStats  map[string]string
 	mapToDocker map[string]string
 }
 
@@ -214,7 +215,9 @@ func (f *core) loadMetricTemplate() error {
 	f.metricTemplate = MetricTemplate{
 		source:      string(dockerTemplate),
 		statsSource: string(statsTemplate),
-		mapToDocker: extractMapping(statsObj)}
+		mapToStats:  extractMapping(statsObj),
+		mapToDocker: extractMapping(templateObj),
+	}
 	return nil
 }
 
@@ -244,11 +247,11 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 	dockerPaths := f.state.DockerPaths
 	dockerStorage := f.state.DockerStorage
 	temporaryStats := map[string]map[string]interface{}{}
-	fetchObjectForDocker := func(id, path string, metric *plugin.MetricType) map[string]interface{} {
+	fetchObjectForDocker := func(id, path string, metric *plugin.MetricType) (obj map[string]interface{}, existedBefore bool) {
 		//TODO: support the docker tree
 		if dockerObj, gotIt := dockerStorage[path]; gotIt {
 			dockerMap := dockerObj.(map[string]interface{})
-			return dockerMap
+			return dockerMap, true
 		} else {
 			dockerPaths[path] = id
 			var dockerMap map[string]interface{}
@@ -257,10 +260,10 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			dockerMap["id"] = id
 
 			dockerStorage[path] = dockerMap
-			return dockerMap
+			return dockerMap, false
 		}
 	}
-	fetchObjectForDockerStats := func(id, path string, metric *plugin.MetricType) (map[string]interface{}, bool) {
+	fetchObjectForStats := func(id, path string, metric *plugin.MetricType) (map[string]interface{}, bool) {
 		var statsObj map[string]interface{}
 		var haveStats bool
 		if statsObj, haveStats = temporaryStats[path]; haveStats {
@@ -274,8 +277,8 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return statsObj, false
 		}
 	}
-	validateDockerMetric := func(path, ns string) (string, bool) {
-		for sourcePath, _ := range f.metricTemplate.mapToDocker {
+	validateStatsMetric := func(path, ns string) (string, bool) {
+		for sourcePath, _ := range f.metricTemplate.mapToStats {
 			if strings.HasSuffix(ns, sourcePath) {
 				return sourcePath, true
 			}
@@ -283,13 +286,23 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		customPath := ns[strings.LastIndex(ns, path)+len(path):]
 		return customPath, false
 	}
-	insertIntoStats := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) {
+	validateDockerMetric := func(path, ns string) (string, bool) {
+		for sourcePath, _ := range f.metricTemplate.mapToDocker {
+			if strings.HasSuffix(ns, sourcePath) {
+				return sourcePath, true
+			}
+		}
+		return "", false
+	}
+	insertIntoStats := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
-		if sourcePath, isExpectedMetric := validateDockerMetric(dockerPath, ns); isExpectedMetric {
-			targetPath := f.metricTemplate.mapToDocker[sourcePath]
+		didInsert = false
+		if sourcePath, isStatsMetric := validateStatsMetric(dockerPath, ns); isStatsMetric {
+			targetPath := f.metricTemplate.mapToStats[sourcePath]
 			metricParent, _ := util.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
 			metricParentMap := metricParent.(map[string]interface{})
 			metricParentMap[filepath.Base(targetPath)] = metric.Data()
+			didInsert = true
 		} else {
 			//TODO: handle custom metrics
 			//snapMetricsList, _ := util.NewObjWalker(statsObj).Seek("/stats/custom_metrics/SNAP")
@@ -298,10 +311,27 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			//oneMetric["type"] = "gauge"
 			//oneMetric[""]
 		}
+		return
 	}
+
+	insertIntoDocker := func(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
+		ns := metric.Namespace().String()
+		didInsert = false
+		sourcePath, isDockerMetric := validateDockerMetric(dockerPath, ns)
+		if !isDockerMetric {
+			return
+		}
+		targetPath := f.metricTemplate.mapToDocker[sourcePath]
+		metricParent, _ := util.NewObjWalker(dockerObj).Seek(filepath.Dir(targetPath))
+		metricParentMap := metricParent.(map[string]interface{})
+		metricParentMap[filepath.Base(targetPath)] = metric.Data()
+		didInsert = true
+		return
+	}
+
 	mergeStatsForDocker := func(id, path string) {
-		dockerObj := fetchObjectForDocker(id, path, nil)
-		statsObj, haveStats := fetchObjectForDockerStats(id, path, nil)
+		dockerObj, _ := fetchObjectForDocker(id, path, nil)
+		statsObj, haveStats := fetchObjectForStats(id, path, nil)
 		if !haveStats {
 			return
 		}
@@ -332,11 +362,19 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		statsList = append(statsList, statsObj)
 		dockerObj["stats"] = statsList
 	}
+	firstTimeDockers := map[string]bool{}
 	for _, mt := range metrics {
 		if id, path, isDockerMetric := f.extractDockerIdAndPath(&mt); isDockerMetric {
-			fetchObjectForDocker(id, path, &mt)
-			statsObj, _ := fetchObjectForDockerStats(id, path, &mt)
-			insertIntoStats(path, statsObj, &mt)
+			dockerObj, knownDocker := fetchObjectForDocker(id, path, &mt)
+			if !knownDocker {
+				firstTimeDockers[path] = true
+			}
+			statsObj, _ := fetchObjectForStats(id, path, &mt)
+			if !insertIntoStats(path, statsObj, &mt) {
+				if _, firstTimeDocker := firstTimeDockers[path]; firstTimeDocker {
+					insertIntoDocker(path, dockerObj, &mt)
+				}
+			}
 		}
 	}
 	for path, id := range dockerPaths {
