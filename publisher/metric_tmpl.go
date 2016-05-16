@@ -29,7 +29,7 @@ const builtinMetricTemplate = `{
 },
   "subcontainers": [],
 "spec": {
- "creation_time": "/creation_time",
+ "creation_time": "/spec/creation_time",
  "labels": {
  },
  "has_cpu": true,
@@ -43,7 +43,7 @@ const builtinMetricTemplate = `{
  "has_diskio": true,
  "has_custom_metrics": true,
  "custom_metrics":[],
- "image": "/image_name"
+ "image": "/spec/image_name"
 },
 "stats": [
  {
@@ -54,14 +54,14 @@ const builtinMetricTemplate = `{
   },
   "cpu": {
    "usage": {
-    "total": "/stats/cpu_stats/cpu_usage/total_usage"
+    "total": "/cgroups/cpu_stats/cpu_usage/total_usage"
    }
   },
   "memory": {
-   "usage": "/stats/memory_stats/usage/usage",
+   "usage": "/cgroups/memory_stats/usage/usage",
    "container_data": {
-    "pgfault": "/stats/memory_stats/stats/pgfault",
-    "pgmajfault": "/stats/memory_stats/stats/pgmajfault"
+    "pgfault": "/cgroups/memory_stats/stats/pgfault",
+    "pgmajfault": "/cgroups/memory_stats/stats/pgmajfault"
    }
   },
   "network": {

@@ -49,7 +49,7 @@ const (
 )
 
 const (
-	dockerMetricPrefix = "/intel/linux/docker"
+	dockerMetricPrefix = "/intel/docker"
 	defStatsDepth      = 10
 	defServerPort      = 8777
 	defStatsSpanStr    = "10m"

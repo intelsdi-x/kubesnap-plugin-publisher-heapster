@@ -47,7 +47,7 @@ func EnsureStarted(state *exchange.InnerState, port int) {
 func ServerFunc(state *exchange.InnerState, port int) {
 	logger = log.New()
 	router := mux.NewRouter().StrictSlash(true)
-	router.Methods("POST").Path("/stats/container").HandlerFunc(wrapper(state, Stats))
+	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(state, Stats))
 	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
 }
 
