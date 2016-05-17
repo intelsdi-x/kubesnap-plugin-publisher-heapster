@@ -270,7 +270,7 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return statsObj, true
 		} else if metric != nil {
 			json.Unmarshal([]byte(f.metricTemplate.statsSource), &statsObj)
-			statsObj["timestamp"] = metric.Timestamp().String()
+			statsObj["timestamp"] = metric.Timestamp().Format("2006-01-02T15:04:05Z07:00")
 			temporaryStats[path] = statsObj
 			return statsObj, true
 		} else {
