@@ -104,6 +104,7 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	}
 	var stats exchange.StatsRequest
 	json.Unmarshal(body, &stats)
+	logger.Infof("Received request: %#v; current time: %s", stats, time.Now())
 	if _, gotStart := statsJson["start"]; !gotStart {
 		stats.Start = time.Time{}
 	}
