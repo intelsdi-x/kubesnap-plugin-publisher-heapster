@@ -55,10 +55,13 @@ const (
 	defStatsSpanStr    = "10m"
 	defStatsSpan       = 10 * time.Minute
 	defExportTmplFile  = "builtin"
+	defTstampDeltaStr= "0"
+	defTstampDelta= 0
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
 	cfgStatsSpan       = "stats_span"
 	cfgExportTmplFile  = "export_tmpl_file"
+	cfgTstampDelta  = "timestamp_delta"
 )
 
 type core struct {
@@ -68,6 +71,7 @@ type core struct {
 	statsDepth     int
 	statsSpan      time.Duration
 	exportTmplFile string
+	tstampDelta      time.Duration
 	metricTemplate MetricTemplate
 }
 
@@ -129,7 +133,8 @@ func (f *core) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
 	rule2, _ := cpolicy.NewIntegerRule(cfgStatsDepth, false, defStatsDepth)
 	rule3, _ := cpolicy.NewStringRule(cfgStatsSpan, false, defStatsSpanStr)
 	rule4, _ := cpolicy.NewStringRule(cfgExportTmplFile, false, defExportTmplFile)
-	p.Add(rule1, rule2, rule3, rule4)
+	rule5, _ := cpolicy.NewStringRule(cfgTstampDelta, false, defTstampDeltaStr)
+	p.Add(rule1, rule2, rule3, rule4, rule5)
 	cp.Add([]string{}, p)
 	return cp, nil
 }
@@ -169,6 +174,13 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 		f.exportTmplFile = configMap.GetStr(cfgExportTmplFile, defExportTmplFile)
 		if err := f.loadMetricTemplate(); err != nil {
 			f.logger.Fatalf("couldn't load metric template: %s", err)
+		}
+		tstampDeltaStr := configMap.GetStr(cfgTstampDelta, defTstampDeltaStr)
+		tstampDelta, err := time.ParseDuration(tstampDeltaStr)
+		if err != nil {
+			f.tstampDelta = defTstampDelta
+		} else {
+			f.tstampDelta = tstampDelta
 		}
 		server.EnsureStarted(f.state, serverPort)
 	})
@@ -270,7 +282,8 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return statsObj, true
 		} else if metric != nil {
 			json.Unmarshal([]byte(f.metricTemplate.statsSource), &statsObj)
-			statsObj["timestamp"] = metric.Timestamp().Format("2006-01-02T15:04:05Z07:00")
+			tstamp := metric.Timestamp().Add(f.tstampDelta)
+			statsObj["timestamp"] = tstamp.Format("2006-01-02T15:04:05Z07:00")
 			temporaryStats[path] = statsObj
 			return statsObj, true
 		} else {

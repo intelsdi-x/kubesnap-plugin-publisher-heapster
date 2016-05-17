@@ -65,6 +65,7 @@ publisher loaded, e.g.:
                 server_port: 8777
                 stats_span: "10m"
                 export_tmpl_file: "builtin"
+                tstamp_delta: "1h"
 ```
 but note that the config given in bootstrap's manifest will be kept for
 all further invocations of publisher.
