@@ -54,14 +54,14 @@ const builtinMetricTemplate = `{
   },
   "cpu": {
    "usage": {
-    "total": "0"
+    "total": "/stats/cpu_stats/cpu_usage/total_usage"
    }
   },
   "memory": {
-   "usage": "0",
+   "usage": "/stats/memory_stats/usage/usage",
    "container_data": {
-    "pgfault": "0",
-    "pgmajfault": "0"
+    "pgfault": "/stats/memory_stats/stats/pgfault",
+    "pgmajfault": "/stats/memory_stats/stats/pgmajfault"
    }
   },
   "network": {
