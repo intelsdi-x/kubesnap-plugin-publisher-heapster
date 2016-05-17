@@ -29,7 +29,7 @@ const builtinMetricTemplate = `{
 },
   "subcontainers": [],
 "spec": {
- "creation_time": "/spec/creation_time",
+ "creation_time": "/creation_time",
  "labels": {
  },
  "has_cpu": true,
@@ -43,7 +43,7 @@ const builtinMetricTemplate = `{
  "has_diskio": true,
  "has_custom_metrics": true,
  "custom_metrics":[],
- "image": "/spec/image_name"
+ "image": "/image_name"
 },
 "stats": [
  {
@@ -68,7 +68,9 @@ const builtinMetricTemplate = `{
    "rx_bytes": "0",
    "rx_errors": "0",
    "tx_bytes": "0",
-   "tx_errors": "0"
+   "tx_errors": "0",
+   "interfaces":[
+   ]
   }
  }
 ]
