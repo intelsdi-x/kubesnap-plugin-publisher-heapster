@@ -54,21 +54,21 @@ const builtinMetricTemplate = `{
   },
   "cpu": {
    "usage": {
-    "total": "/stats/cpu_stats/cpu_usage/total_usage"
+    "total": "0"
    }
   },
   "memory": {
-   "usage": "/stats/memory_stats/usage/usage",
+   "usage": "0",
    "container_data": {
-    "pgfault": "/stats/memory_stats/stats/pgfault",
-    "pgmajfault": "/stats/memory_stats/stats/pgmajfault"
+    "pgfault": "0",
+    "pgmajfault": "0"
    }
   },
   "network": {
-   "rx_bytes": "/stats/network/rx_bytes",
-   "rx_errors": "/stats/network/rx_errors",
-   "tx_bytes": "/stats/network/tx_bytes",
-   "tx_errors": "/stats/network/tx_errors"
+   "rx_bytes": "0",
+   "rx_errors": "0",
+   "tx_bytes": "0",
+   "tx_errors": "0"
   }
  }
 ]
