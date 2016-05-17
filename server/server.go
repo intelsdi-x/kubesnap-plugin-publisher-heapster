@@ -59,11 +59,12 @@ func copyFlat(data map[string]interface{}) map[string]interface{} {
 	return res
 }
 
-func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest) interface{} {
+func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest) (interface{}, int) {
 	state.RLock()
 	defer state.RUnlock()
 	ref := state.DockerStorage
 	res := map[string]map[string]interface{}{}
+	numstats := 0
 	for dockerName, dockerObj := range ref {
 		dockerCopy := copyFlat(dockerObj.(map[string]interface{}))
 		statsList := dockerCopy["stats"].([]interface{})
@@ -75,6 +76,7 @@ func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest
 				continue
 			}
 			statsCopy = append(statsCopy, statsObj)
+			numstats++
 			if stats.NumStats > 0 && len(statsCopy) >= stats.NumStats {
 				break
 			}
@@ -82,7 +84,7 @@ func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest
 		dockerCopy["stats"] = statsCopy
 		res[dockerName] = dockerCopy
 	}
-	return res
+	return res, numstats
 }
 
 func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
@@ -104,7 +106,6 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	}
 	var stats exchange.StatsRequest
 	json.Unmarshal(body, &stats)
-	logger.Infof("Received request: %#v; current time: %s", stats, time.Now())
 	if _, gotStart := statsJson["start"]; !gotStart {
 		stats.Start = time.Time{}
 	}
@@ -113,7 +114,8 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
-	res := buildStatsResponse(state, &stats)
+	res, numstats := buildStatsResponse(state, &stats)
+	logger.Infof("Received request: %#v; total stats objects to return: %s, time in seconds: %s, current time: %s", stats, numstats, time.Unix,  time.Now())
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		panic(err)
 	}
