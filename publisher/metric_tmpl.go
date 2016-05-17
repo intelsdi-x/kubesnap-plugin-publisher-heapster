@@ -65,10 +65,10 @@ const builtinMetricTemplate = `{
    }
   },
   "network": {
-   "rx_bytes": "/stats/network/rx_bytes",
-   "rx_errors": "/stats/network/rx_errors",
-   "tx_bytes": "/stats/network/tx_bytes",
-   "tx_errors": "/stats/network/tx_errors"
+   "rx_bytes": "0",
+   "rx_errors": "0",
+   "tx_bytes": "0",
+   "tx_errors": "0"
   }
  }
 ]
