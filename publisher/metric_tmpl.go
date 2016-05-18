@@ -32,8 +32,17 @@ const builtinMetricTemplate = `{
 		"creation_time":"/creation_time",
 		"labels":{
 		},
-		"has_cpu":false,
-		"has_memory":false,
+		"has_cpu":true,
+		"cpu":{
+			"limit":2,
+			"max_limit":2,
+			"mask":"0-1"
+		},
+		"has_memory":true,
+		"memory":{
+			"limit":18446744073709551615,
+			"swap_limit":18446744073709551615
+		},
 		"has_network":true,
 		"has_filesystem":true,
 		"has_diskio":false,
@@ -106,10 +115,11 @@ const builtinMetricTemplate = `{
 					"Listen":0,
 					"Closing":0
 				}
-
 			},
 			"filesystem":[
 				{
+					"device":"/dev/sdx1",
+					"type":"vfs",
 					"capacity":0,
 					"usage":0,
 					"base_usage":0,
