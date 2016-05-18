@@ -20,59 +20,115 @@ limitations under the License.
 package publisher
 
 const builtinMetricTemplate = `{
-"id": "!!",
-"name": "!!",
-"aliases": [
-],
-"namespace": "docker",
-"labels": {
-},
-  "subcontainers": [],
-"spec": {
- "creation_time": "/creation_time",
- "labels": {
- },
- "has_cpu": true,
- "cpu": {
- },
- "has_memory": true,
- "memory": {
- },
- "has_network": true,
- "has_filesystem": false,
- "has_diskio": true,
- "has_custom_metrics": true,
- "custom_metrics":[],
- "image": "/image_name"
-},
-"stats": [
- {
-  "timestamp": "!!",
-  "custom_metrics": {
-   "SNAP": [
-   ]
-  },
-  "cpu": {
-   "usage": {
-    "total": "/cgroups/cpu_stats/cpu_usage/total_usage"
-   }
-  },
-  "memory": {
-   "usage": "/cgroups/memory_stats/usage/usage",
-   "container_data": {
-    "pgfault": "/cgroups/memory_stats/stats/pgfault",
-    "pgmajfault": "/cgroups/memory_stats/stats/pgmajfault"
-   }
-  },
-  "network": {
-   "rx_bytes": "0",
-   "rx_errors": "0",
-   "tx_bytes": "0",
-   "tx_errors": "0",
-   "interfaces":[
-   ]
-  }
- }
-]
+	"id":"!!",
+	"name":"!!",
+	"aliases":[
+	],
+	"labels":{
+	},
+	"subcontainers":[
+	],
+	"spec":{
+		"creation_time":"/creation_time",
+		"labels":{
+		},
+		"has_cpu":false,
+		"has_memory":false,
+		"has_network":true,
+		"has_filesystem":true,
+		"has_diskio":false,
+		"has_custom_metrics":false,
+		"image":"/image_name"
+	},
+	"stats":[
+		{
+			"timestamp":"!!",
+			"cpu":{
+				"usage":{
+					"total":"/cgroups/cpu_stats/cpu_usage/total_usage",
+					"user":"/cgroups/cpu_stats/cpu_usage/usage_in_usermode",
+					"system":"/cgroups/cpu_stats/cpu_usage/usage_in_kernelmode"
+				},
+				"load_average":0
+			},
+			"diskio":{
+			},
+			"memory":{
+				"usage":"/cgroups/memory_stats/usage/usage",
+				"cache":"/cgroups/memory_stats/cache",
+				"rss":"/cgroups/memory_stats/stats/rss",
+				"working_set":0,
+				"failcnt":0,
+				"container_data":{
+					"pgfault":"/cgroups/memory_stats/stats/pgfault",
+					"pgmajfault":"/cgroups/memory_stats/stats/pgmajfault"
+				},
+				"hierarchical_data":{
+					"pgfault":0,
+					"pgmajfault":0
+				}
+			},
+			"network":{
+				"name":"",
+				"rx_bytes":0,
+				"rx_packets":0,
+				"rx_errors":0,
+				"rx_dropped":0,
+				"tx_bytes":0,
+				"tx_packets":0,
+				"tx_errors":0,
+				"tx_dropped":0,
+				"interfaces":[
+				],
+				"tcp":{
+					"Established":0,
+					"SynSent":0,
+					"SynRecv":0,
+					"FinWait1":0,
+					"FinWait2":0,
+					"TimeWait":0,
+					"Close":0,
+					"CloseWait":0,
+					"LastAck":0,
+					"Listen":0,
+					"Closing":0
+				},
+				"tcp6":{
+					"Established":0,
+					"SynSent":0,
+					"SynRecv":0,
+					"FinWait1":0,
+					"FinWait2":0,
+					"TimeWait":0,
+					"Close":0,
+					"CloseWait":0,
+					"LastAck":0,
+					"Listen":0,
+					"Closing":0
+				}
+
+			},
+			"filesystem":[
+				{
+					"capacity":0,
+					"usage":0,
+					"base_usage":0,
+					"available":0,
+					"inodes_free":0,
+					"reads_completed":0,
+					"reads_merged":0,
+					"sectors_read":0,
+					"read_time":0,
+					"writes_completed":0,
+					"writes_merged":0,
+					"sectors_written":0,
+					"write_time":0,
+					"io_in_progress":0,
+					"io_time":0,
+					"weighted_io_time":0
+				}
+			]
+		}
+	]
 }
 `
