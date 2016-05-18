@@ -40,8 +40,8 @@ const builtinMetricTemplate = `{
 		},
 		"has_memory":true,
 		"memory":{
-			"limit":4294967295,
-			"swap_limit":4294967295
+			"limit":0,
+			"swap_limit":0
 		},
 		"has_network":true,
 		"has_filesystem":true,
