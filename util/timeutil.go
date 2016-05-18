@@ -25,5 +25,5 @@ import (
 
 // ParseTime parses string representation of time as produced by Time.String().
 func ParseTime(str string) (time.Time, error) {
-	return time.Parse("2006-01-02 15:04:05.999999999 -0700 MST", str)
+	return time.Parse("2006-01-02T15:04:05Z07:00", str)
 }
