@@ -115,7 +115,7 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
 	res, numstats := buildStatsResponse(state, &stats)
-	logger.Infof("Received request: %#v; total stats objects to return: %s, time in seconds: %s, current time: %s", stats, numstats, time.Unix,  time.Now())
+	logger.Infof("Received request: %#v; total stats objects to return: %v, time in seconds: %v, current time: %s", stats, numstats, time.Now().Unix(), time.Now())
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		panic(err)
 	}

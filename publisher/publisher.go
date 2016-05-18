@@ -44,7 +44,7 @@ import (
 
 const (
 	name       = "heapster"
-	version    = 1
+	version    = 2
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -55,14 +55,24 @@ const (
 	defStatsSpanStr    = "10m"
 	defStatsSpan       = 10 * time.Minute
 	defExportTmplFile  = "builtin"
-	defTstampDeltaStr= "0"
-	defTstampDelta= 0
+	defTstampDeltaStr  = "0"
+	defTstampDelta     = 0
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
 	cfgStatsSpan       = "stats_span"
 	cfgExportTmplFile  = "export_tmpl_file"
-	cfgTstampDelta  = "timestamp_delta"
+	cfgTstampDelta     = "timestamp_delta"
 )
+
+type coreStats struct {
+	metricsRxTotal       int
+	metricsRxRecently    int
+	containersRxRecently int
+	containersRxMax      int
+	statsRxRecently      int
+	statsRxMax           int
+	statsRxTotal         int
+}
 
 type core struct {
 	logger         *log.Logger
@@ -71,8 +81,9 @@ type core struct {
 	statsDepth     int
 	statsSpan      time.Duration
 	exportTmplFile string
-	tstampDelta      time.Duration
+	tstampDelta    time.Duration
 	metricTemplate MetricTemplate
+	stats          coreStats
 }
 
 type ConfigMap map[string]ctypes.ConfigValue
@@ -93,6 +104,7 @@ func NewCore() (*core, error) {
 		logger:     logger,
 		statsDepth: defStatsDepth,
 		statsSpan:  defStatsSpan,
+		stats:      coreStats{},
 	}
 	return &core, nil
 }
@@ -259,8 +271,12 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 	dockerPaths := f.state.DockerPaths
 	dockerStorage := f.state.DockerStorage
 	temporaryStats := map[string]map[string]interface{}{}
+	stats_dockersPcsdMap := map[string]bool{}
+	stats_statsPcsdMap := map[string]bool{}
+	//-- worker functions handling different parts of the metrics
 	fetchObjectForDocker := func(id, path string, metric *plugin.MetricType) (obj map[string]interface{}, existedBefore bool) {
 		//TODO: support the docker tree
+		stats_dockersPcsdMap[path] = true
 		if dockerObj, gotIt := dockerStorage[path]; gotIt {
 			dockerMap := dockerObj.(map[string]interface{})
 			return dockerMap, true
@@ -375,6 +391,7 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		statsList = append(statsList, statsObj)
 		dockerObj["stats"] = statsList
 	}
+	//-- main processing loop
 	firstTimeDockers := map[string]bool{}
 	for _, mt := range metrics {
 		if id, path, isDockerMetric := f.extractDockerIdAndPath(&mt); isDockerMetric {
@@ -383,14 +400,30 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 				firstTimeDockers[path] = true
 			}
 			statsObj, _ := fetchObjectForStats(id, path, &mt)
-			if !insertIntoStats(path, statsObj, &mt) {
-				if _, firstTimeDocker := firstTimeDockers[path]; firstTimeDocker {
-					insertIntoDocker(path, dockerObj, &mt)
-				}
+			if insertIntoStats(path, statsObj, &mt) {
+				stats_statsPcsdMap[path] = true
+				continue
+			}
+			if _, firstTimeDocker := firstTimeDockers[path]; firstTimeDocker {
+				insertIntoDocker(path, dockerObj, &mt)
 			}
 		}
 	}
 	for path, id := range dockerPaths {
 		mergeStatsForDocker(id, path)
 	}
+	// update core stats for debugging
+	f.stats.metricsRxRecently = len(metrics)
+	f.stats.metricsRxTotal += len(metrics)
+	if len(stats_dockersPcsdMap) > f.stats.containersRxMax {
+		f.stats.containersRxMax = len(stats_dockersPcsdMap)
+	}
+	f.stats.containersRxRecently = len(stats_dockersPcsdMap)
+	stats_statsPcsdNum := len(stats_statsPcsdMap)
+	if stats_statsPcsdNum > f.stats.statsRxMax {
+		f.stats.statsRxMax = stats_statsPcsdNum
+	}
+	f.stats.statsRxRecently = stats_statsPcsdNum
+	f.stats.statsRxTotal += stats_statsPcsdNum
+	f.logger.Infof("processing stats: %+v\n", f.stats)
 }
