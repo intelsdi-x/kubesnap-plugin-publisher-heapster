@@ -38,17 +38,33 @@ import (
 var logger *log.Logger
 var once sync.Once
 
+type server struct {
+	state *exchange.InnerState
+	port int
+	stats serverStats
+}
+
+type serverStats struct {
+	statsTxMax	int
+	statsTxTotal	int
+	statsTxLast	int
+	statsDdMax	int
+	statsDdTotal	int
+	statsDdLast	int
+}
+
 func EnsureStarted(state *exchange.InnerState, port int) {
 	once.Do(func() {
-		go ServerFunc(state, port)
+		server := server{state: state, port: port}
+		go ServerFunc(&server)
 	})
 }
 
-func ServerFunc(state *exchange.InnerState, port int) {
+func ServerFunc(server *server) {
 	logger = log.New()
 	router := mux.NewRouter().StrictSlash(true)
-	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(state, Stats))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), router))
+	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(server, Stats))
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", server.port), router))
 }
 
 func copyFlat(data map[string]interface{}) map[string]interface{} {
@@ -59,12 +75,14 @@ func copyFlat(data map[string]interface{}) map[string]interface{} {
 	return res
 }
 
-func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest) (interface{}, int) {
+func buildStatsResponse(server *server, stats *exchange.StatsRequest) (interface{}) {
+	state := server.state
 	state.RLock()
 	defer state.RUnlock()
 	ref := state.DockerStorage
 	res := map[string]map[string]interface{}{}
-	numstats := 0
+	stats_statsTx := 0
+	stats_statsDd := 0
 	for dockerName, dockerObj := range ref {
 		dockerCopy := copyFlat(dockerObj.(map[string]interface{}))
 		statsList := dockerCopy["stats"].([]interface{})
@@ -73,10 +91,11 @@ func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest
 			statsMap := statsObj.(map[string]interface{})
 			ckStamp, _ := util.ParseTime(statsMap["timestamp"].(string))
 			if ckStamp.Before(stats.Start) || ckStamp.After(stats.End) {
+				stats_statsDd++
 				continue
 			}
 			statsCopy = append(statsCopy, statsObj)
-			numstats++
+			stats_statsTx++
 			if stats.NumStats > 0 && len(statsCopy) >= stats.NumStats {
 				break
 			}
@@ -84,10 +103,21 @@ func buildStatsResponse(state *exchange.InnerState, stats *exchange.StatsRequest
 		dockerCopy["stats"] = statsCopy
 		res[dockerName] = dockerCopy
 	}
-	return res, numstats
+	// update the statistics
+	if stats_statsDd > server.stats.statsDdMax {
+		server.stats.statsDdMax = stats_statsDd
+	}
+	server.stats.statsDdLast = stats_statsDd
+	server.stats.statsDdTotal += stats_statsDd
+	if stats_statsTx > server.stats.statsTxMax {
+		server.stats.statsTxMax = stats_statsTx
+	}
+	server.stats.statsTxLast = stats_statsTx
+	server.stats.statsTxTotal += stats_statsTx
+	return res
 }
 
-func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
+func Stats(server *server, w http.ResponseWriter, r *http.Request) {
 	body, err := ioutil.ReadAll(io.LimitReader(r.Body, 1048576))
 	if err != nil {
 		panic(err)
@@ -114,15 +144,15 @@ func Stats(state *exchange.InnerState, w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
-	res, numstats := buildStatsResponse(state, &stats)
-	logger.Infof("Received request: %#v; total stats objects to return: %v, time in seconds: %v, current time: %s", stats, numstats, time.Now().Unix(), time.Now())
+	res := buildStatsResponse(server, &stats)
+	logger.Infof("Received request: %+v; current time in seconds: %v, current time: %s, processing stats: %+v", stats, time.Now().Unix(), time.Now(), server.stats)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		panic(err)
 	}
 }
 
-func wrapper(state *exchange.InnerState, fu func(*exchange.InnerState, http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func wrapper(server *server, fu func(*server, http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		Stats(state, w, r)
+		Stats(server, w, r)
 	}
 }
