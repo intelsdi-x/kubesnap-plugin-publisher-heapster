@@ -98,6 +98,12 @@ func NewInnerState() *exchange.InnerState {
 
 func NewCore() (*core, error) {
 	log.SetOutput(os.Stderr)
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "Defeated by errors in Init: %s, %#v", r, r)
+			panic(r)
+		}
+	}()
 	logger := log.New()
 	core := core{
 		state:      NewInnerState(),
@@ -110,6 +116,12 @@ func NewCore() (*core, error) {
 }
 
 func (f *core) Publish(contentType string, content []byte, config map[string]ctypes.ConfigValue) error {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "Defeated by errors in Publish: %s, %#v", r, r)
+			panic(r)
+		}
+	}()
 	f.ensureInitialized(config)
 	var metrics []plugin.MetricType
 
