@@ -31,6 +31,7 @@ func main() {
 	if publisherCore, err := publisher.NewCore(); err != nil {
 		panic(err)
 	} else {
+		//publisherCore.LoadMetricTemplate("/home/marcinol/work/src/github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/metric_tmpl.json")
 		plugin.Start(meta, publisherCore, os.Args[1])
 	}
 }

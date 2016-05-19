@@ -153,6 +153,13 @@ func ExtractCompactValueSpec(str interface{}) (map[string]interface{}, bool) {
 		if el > 3 {
 			spec["type"] = elements[3]
 		}
+		if el > 4 {
+			options := strings.TrimSpace(elements[4])
+			for _, kv := range strings.Split(options, ",") {
+				kvs := strings.SplitN(strings.TrimSpace(kv), "=", 2)
+				spec[strings.TrimSpace(kvs[0])] = strings.TrimSpace(kvs[1])
+ 			}
+		}
 		return spec, true
 	}
 	return spec, false
@@ -258,9 +265,15 @@ str,SF ->IT<- str,TF // reformat
 }
 
 func (s *ValueProvider) GetDefault(spec map[string]string) interface{} {
+	defVal, _ := s.GetDefaultOr(spec)
+	return defVal
+}
+
+func (s *ValueProvider) GetDefaultOr(spec map[string]string) (interface{}, bool) {
 	t := spec["type"]
+	_, noDefault := spec["no_default"]
 	d, gotD := spec["default"]
-	if !gotD {
+	if !gotD || noDefault {
 		d = s.defaults[t]
 	}
 	f, gotF := spec["fmt"]
@@ -274,7 +287,7 @@ func (s *ValueProvider) GetDefault(spec map[string]string) interface{} {
 		if err != nil {
 			panic(fmt.Errorf("Failed to parse the default with type '%s': %v", t, err))
 		}
-		return val
+		return val, !noDefault
 	}
 
 }

@@ -281,8 +281,14 @@ func (f *core) loadMetricTemplate() error {
 		vp := util.NewValueProvider()
 		for _, spec := range mapping {
 			node, _ := w.Seek(filepath.Dir(spec["target"]))
-			defVal := vp.GetDefault(spec)
-			node.(map[string]interface{})[filepath.Base(spec["target"])] = defVal
+			nodeAsMap := node.(map[string]interface{})
+			leafName := filepath.Base(spec["target"])
+			defVal, gotDefault := vp.GetDefaultOr(spec)
+			if gotDefault {
+				nodeAsMap[leafName] = defVal
+			} else {
+				delete(nodeAsMap, leafName)
+			}
 		}
 	}
 	pri := func(pfx string, val interface{}) {
@@ -346,6 +352,10 @@ func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string
 	tailSplit := strings.Split(strings.TrimLeft(strings.TrimPrefix(ns, dockerMetricPrefix), "/"), "/")
 	id := tailSplit[0]
 	path := "/" + id
+	if id == "root" {
+		id = "/"
+		path = "/"
+	}
 	return id, path, true
 }
 
@@ -366,8 +376,12 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			dockerPaths[path] = id
 			var dockerMap map[string]interface{}
 			json.Unmarshal([]byte(f.metricTemplate.source), &dockerMap)
-			dockerMap["name"] = path
 			dockerMap["id"] = id
+			dockerMap["name"] = path
+			if id == "root" {
+				dockerMap["id"] = "/"
+				dockerMap["name"] = "/"
+			}
 
 			dockerStorage[path] = dockerMap
 			return dockerMap, false
