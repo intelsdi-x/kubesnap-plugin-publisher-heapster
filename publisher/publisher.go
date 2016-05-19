@@ -352,6 +352,10 @@ func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string
 	tailSplit := strings.Split(strings.TrimLeft(strings.TrimPrefix(ns, dockerMetricPrefix), "/"), "/")
 	id := tailSplit[0]
 	path := "/" + id
+	if id == "root" {
+		id = "/"
+		path = "/"
+	}
 	return id, path, true
 }
 
@@ -372,8 +376,12 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			dockerPaths[path] = id
 			var dockerMap map[string]interface{}
 			json.Unmarshal([]byte(f.metricTemplate.source), &dockerMap)
-			dockerMap["name"] = path
 			dockerMap["id"] = id
+			dockerMap["name"] = path
+			if id == "root" {
+				dockerMap["id"] = "/"
+				dockerMap["name"] = "/"
+			}
 
 			dockerStorage[path] = dockerMap
 			return dockerMap, false
