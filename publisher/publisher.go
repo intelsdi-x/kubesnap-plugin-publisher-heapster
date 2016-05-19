@@ -40,11 +40,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"github.com/satori/go.uuid"
 )
 
 const (
 	name       = "heapster"
-	version    = 2
+	version    = 3
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -234,10 +235,6 @@ func (f *core) loadMetricTemplate() error {
 		mapping := map[string]map[string]string {}
 		tmplWalker := util.NewObjWalker(obj)
 		tmplWalker.Walk("/", func(target string, info os.FileInfo, _ error) error {
-			//if source, isStr := info.Sys().(string); isStr &&
-			//	strings.HasPrefix(source, "/") {
-			//	mapping[source] = target
-			//}
 			var spec map[string]interface{}
 			var isMap bool
 			pureMap := true
@@ -246,17 +243,30 @@ func (f *core) loadMetricTemplate() error {
 				spec, isMap = util.ExtractCompactValueSpec(info.Sys())
 			}
 			if isMap {
-				//FIXME: REMOVEIT\/
-				//fmt.Printf("  is map @%v: %#v\n", target, spec)
 				if _, isSpec := spec[tmplMarker]; !isSpec {
 					return nil
 				}
 				spec["target"] = target
-				specConv := map[string]string {}
+				valueSpec := map[string]string {}
 				for k, v := range spec {
-					specConv[k] = v.(string)
+					valueSpec[k] = v.(string)
 				}
-				mapping[specConv["src"]] = specConv
+				src := valueSpec["src"]
+				// if have another spec for this source path,
+				//record new value spec as alias
+				if rootMapping, haveRoot := mapping[src]; haveRoot {
+					alias := uuid.NewV1().String()
+					aliases, haveAliases := rootMapping["aliases"]
+					if !haveAliases {
+						aliases = alias
+					} else {
+						aliases = aliases + ":" + alias
+					}
+					rootMapping["aliases"] = aliases
+					mapping[alias] = valueSpec
+				} else {
+					mapping[src] = valueSpec
+				}
 				if pureMap {
 					return filepath.SkipDir
 				}
@@ -265,6 +275,7 @@ func (f *core) loadMetricTemplate() error {
 		})
 		return mapping
 	}
+	// replace value specs in template object with default values that those specs provide
 	applyDefaults := func(obj interface{}, mapping map[string]map[string]string) {
 		w := util.NewObjWalker(obj)
 		vp := util.NewValueProvider()
@@ -274,10 +285,10 @@ func (f *core) loadMetricTemplate() error {
 			node.(map[string]interface{})[filepath.Base(spec["target"])] = defVal
 		}
 	}
-	//pri := func(pfx string, val interface{}) {
-	//	valb, _ := json.MarshalIndent(val, "", "  ")
-	//	fmt.Printf("%s) %#s\n", pfx, valb)
-	//}
+	pri := func(pfx string, val interface{}) {
+		//valb, _ := json.MarshalIndent(val, "", "  ")
+		//fmt.Printf("%s) %#s\n", pfx, valb)
+	}
 	statsListRef, _ := util.NewObjWalker(templateObj).Seek("/stats")
 	statsList := statsListRef.([]interface{})
 	var statsObj interface{}
@@ -285,19 +296,19 @@ func (f *core) loadMetricTemplate() error {
 	map[string]interface{}(templateObj)["stats"] = statsList
 	// extract template mappings
 	////FIXME:REMOVEIT\/
-	//pri("the statsObj", statsObj)
-	//pri("the templateObj", templateObj)
+	pri("\n\n\nthe statsObj", statsObj)
+	pri("\nthe templateObj", templateObj)
 	mapToStats :=  extractMapping(statsObj)
 	mapToDocker := extractMapping(templateObj)
 	////FIXME:REMOVEIT\/
-	//pri("the mapToStats", mapToStats)
-	//pri("the mapToDocker", mapToDocker)
+	pri("\n\n\nthe mapToStats", mapToStats)
+	pri("\nthe mapToDocker", mapToDocker)
 	// replace the template positions with default values
 	applyDefaults(statsObj, mapToStats)
 	applyDefaults(templateObj, mapToDocker)
 	////FIXME:REMOVEIT\/
-	//pri("the statsObj-1", statsObj)
-	//pri("the templateObj-1", templateObj)
+	pri("\n\n\nthe statsObj-1", statsObj)
+	pri("\nthe templateObj-1", templateObj)
 	statsTemplate, _ := json.Marshal(statsObj)
 	dockerTemplate, _ := json.Marshal(templateObj)
 	f.metricTemplate = MetricTemplate{
@@ -377,32 +388,44 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return statsObj, false
 		}
 	}
-	validateStatsMetric := func(path, ns string) (string, bool) {
+	validateStatsMetric := func(path, ns string) ([]string, bool) {
 		for sourcePath, _ := range f.metricTemplate.mapToStats {
 			if strings.HasSuffix(ns, sourcePath) {
-				return sourcePath, true
+				convSpec := f.metricTemplate.mapToStats[sourcePath]
+				if aliases, haveAliases := convSpec["aliases"]; haveAliases {
+					sourcePaths := append(strings.Split(aliases, ":"), sourcePath)
+					return sourcePaths, true
+				}
+				return []string{sourcePath}, true
 			}
 		}
 		customPath := ns[strings.LastIndex(ns, path)+len(path):]
-		return customPath, false
+		return []string{customPath}, false
 	}
-	validateDockerMetric := func(path, ns string) (string, bool) {
+	validateDockerMetric := func(path, ns string) ([]string, bool) {
 		for sourcePath, _ := range f.metricTemplate.mapToDocker {
 			if strings.HasSuffix(ns, sourcePath) {
-				return sourcePath, true
+				convSpec := f.metricTemplate.mapToDocker[sourcePath]
+				if aliases, haveAliases := convSpec["aliases"]; haveAliases {
+					sourcePaths := append(strings.Split(aliases, ":"), sourcePath)
+					return sourcePaths, true
+				}
+				return []string{sourcePath}, true
 			}
 		}
-		return "", false
+		return []string{}, false
 	}
 	insertIntoStats := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
 		didInsert = false
-		if sourcePath, isStatsMetric := validateStatsMetric(dockerPath, ns); isStatsMetric {
-			targetPath := f.metricTemplate.mapToStats[sourcePath]["target"]
-			metricParent, _ := util.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
-			metricParentMap := metricParent.(map[string]interface{})
-			metricParentMap[filepath.Base(targetPath)] = metric.Data()
-			didInsert = true
+		if sourcePaths, isStatsMetric := validateStatsMetric(dockerPath, ns); isStatsMetric {
+			for _, sourcePath := range sourcePaths {
+				targetPath := f.metricTemplate.mapToStats[sourcePath]["target"]
+				metricParent, _ := util.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
+				metricParentMap := metricParent.(map[string]interface{})
+				metricParentMap[filepath.Base(targetPath)] = metric.Data()
+				didInsert = true
+			}
 		} else {
 			//TODO: handle custom metrics
 			//snapMetricsList, _ := util.NewObjWalker(statsObj).Seek("/stats/custom_metrics/SNAP")
@@ -413,19 +436,20 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		}
 		return
 	}
-
 	insertIntoDocker := func(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
 		didInsert = false
-		sourcePath, isDockerMetric := validateDockerMetric(dockerPath, ns)
+		sourcePaths, isDockerMetric := validateDockerMetric(dockerPath, ns)
 		if !isDockerMetric {
 			return
 		}
-		targetPath := f.metricTemplate.mapToDocker[sourcePath]["target"]
-		metricParent, _ := util.NewObjWalker(dockerObj).Seek(filepath.Dir(targetPath))
-		metricParentMap := metricParent.(map[string]interface{})
-		metricParentMap[filepath.Base(targetPath)] = metric.Data()
-		didInsert = true
+		for _, sourcePath := range sourcePaths {
+			targetPath := f.metricTemplate.mapToDocker[sourcePath]["target"]
+			metricParent, _ := util.NewObjWalker(dockerObj).Seek(filepath.Dir(targetPath))
+			metricParentMap := metricParent.(map[string]interface{})
+			metricParentMap[filepath.Base(targetPath)] = metric.Data()
+			didInsert = true
+		}
 		return
 	}
 
