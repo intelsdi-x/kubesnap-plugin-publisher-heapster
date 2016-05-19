@@ -213,8 +213,8 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 type MetricTemplate struct {
 	source      string
 	statsSource string
-	mapToStats  map[string]string
-	mapToDocker map[string]string
+	mapToStats  map[string]map[string]string
+	mapToDocker map[string]map[string]string
 }
 
 func (f *core) loadMetricTemplate() error {
@@ -229,32 +229,91 @@ func (f *core) loadMetricTemplate() error {
 		return err
 	}
 	templateObj := templateRef.(map[string]interface{})
-	extractMapping := func(obj interface{}) map[string]string {
-		mapping := map[string]string{}
+	extractMapping := func(obj interface{}) map[string]map[string]string {
+		const tmplMarker = "__tmpl"
+		mapping := map[string]map[string]string {}
 		tmplWalker := util.NewObjWalker(obj)
 		tmplWalker.Walk("/", func(target string, info os.FileInfo, _ error) error {
-			if source, isStr := info.Sys().(string); isStr &&
-				strings.HasPrefix(source, "/") {
-				mapping[source] = target
+			//if source, isStr := info.Sys().(string); isStr &&
+			//	strings.HasPrefix(source, "/") {
+			//	mapping[source] = target
+			//}
+			var spec map[string]interface{}
+			var isMap bool
+			pureMap := true
+			if spec, isMap = info.Sys().(map[string]interface{}); !isMap {
+				pureMap = false
+				spec, isMap = util.ExtractCompactValueSpec(info.Sys())
+			}
+			if isMap {
+				//FIXME: REMOVEIT\/
+				//fmt.Printf("  is map @%v: %#v\n", target, spec)
+				if _, isSpec := spec[tmplMarker]; !isSpec {
+					return nil
+				}
+				spec["target"] = target
+				specConv := map[string]string {}
+				for k, v := range spec {
+					specConv[k] = v.(string)
+				}
+				mapping[specConv["src"]] = specConv
+				if pureMap {
+					return filepath.SkipDir
+				}
 			}
 			return nil
 		})
 		return mapping
 	}
+	applyDefaults := func(obj interface{}, mapping map[string]map[string]string) {
+		w := util.NewObjWalker(obj)
+		vp := util.NewValueProvider()
+		for _, spec := range mapping {
+			node, _ := w.Seek(filepath.Dir(spec["target"]))
+			defVal := vp.GetDefault(spec)
+			node.(map[string]interface{})[filepath.Base(spec["target"])] = defVal
+		}
+	}
+	//pri := func(pfx string, val interface{}) {
+	//	valb, _ := json.MarshalIndent(val, "", "  ")
+	//	fmt.Printf("%s) %#s\n", pfx, valb)
+	//}
 	statsListRef, _ := util.NewObjWalker(templateObj).Seek("/stats")
 	statsList := statsListRef.([]interface{})
 	var statsObj interface{}
 	statsObj, statsList = statsList[0], statsList[1:]
 	map[string]interface{}(templateObj)["stats"] = statsList
+	// extract template mappings
+	////FIXME:REMOVEIT\/
+	//pri("the statsObj", statsObj)
+	//pri("the templateObj", templateObj)
+	mapToStats :=  extractMapping(statsObj)
+	mapToDocker := extractMapping(templateObj)
+	////FIXME:REMOVEIT\/
+	//pri("the mapToStats", mapToStats)
+	//pri("the mapToDocker", mapToDocker)
+	// replace the template positions with default values
+	applyDefaults(statsObj, mapToStats)
+	applyDefaults(templateObj, mapToDocker)
+	////FIXME:REMOVEIT\/
+	//pri("the statsObj-1", statsObj)
+	//pri("the templateObj-1", templateObj)
 	statsTemplate, _ := json.Marshal(statsObj)
 	dockerTemplate, _ := json.Marshal(templateObj)
 	f.metricTemplate = MetricTemplate{
 		source:      string(dockerTemplate),
 		statsSource: string(statsTemplate),
-		mapToStats:  extractMapping(statsObj),
-		mapToDocker: extractMapping(templateObj),
+		mapToStats:  mapToStats,
+		mapToDocker: mapToDocker,
 	}
 	return nil
+}
+
+func (f *core) LoadMetricTemplate(path string) {
+	f.exportTmplFile = path
+	if err := f.loadMetricTemplate(); err != nil {
+		panic(err)
+	}
 }
 
 func (f *core) loadTemplateSource() (string, error) {
@@ -339,7 +398,7 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		ns := metric.Namespace().String()
 		didInsert = false
 		if sourcePath, isStatsMetric := validateStatsMetric(dockerPath, ns); isStatsMetric {
-			targetPath := f.metricTemplate.mapToStats[sourcePath]
+			targetPath := f.metricTemplate.mapToStats[sourcePath]["target"]
 			metricParent, _ := util.NewObjWalker(statsObj).Seek(filepath.Dir(targetPath))
 			metricParentMap := metricParent.(map[string]interface{})
 			metricParentMap[filepath.Base(targetPath)] = metric.Data()
@@ -362,7 +421,7 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		if !isDockerMetric {
 			return
 		}
-		targetPath := f.metricTemplate.mapToDocker[sourcePath]
+		targetPath := f.metricTemplate.mapToDocker[sourcePath]["target"]
 		metricParent, _ := util.NewObjWalker(dockerObj).Seek(filepath.Dir(targetPath))
 		metricParentMap := metricParent.(map[string]interface{})
 		metricParentMap[filepath.Base(targetPath)] = metric.Data()
