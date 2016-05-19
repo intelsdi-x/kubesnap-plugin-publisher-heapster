@@ -281,8 +281,14 @@ func (f *core) loadMetricTemplate() error {
 		vp := util.NewValueProvider()
 		for _, spec := range mapping {
 			node, _ := w.Seek(filepath.Dir(spec["target"]))
-			defVal := vp.GetDefault(spec)
-			node.(map[string]interface{})[filepath.Base(spec["target"])] = defVal
+			nodeAsMap := node.(map[string]interface{})
+			leafName := filepath.Base(spec["target"])
+			defVal, gotDefault := vp.GetDefaultOr(spec)
+			if gotDefault {
+				nodeAsMap[leafName] = defVal
+			} else {
+				delete(nodeAsMap, leafName)
+			}
 		}
 	}
 	pri := func(pfx string, val interface{}) {

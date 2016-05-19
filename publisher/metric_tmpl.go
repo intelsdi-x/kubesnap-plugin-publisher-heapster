@@ -25,20 +25,20 @@ const builtinMetricTemplate = `{
 	"aliases":[
 	],
 	"labels":{
-		"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str",
-		"io.kubernetes.container.name":"__tmpl|/labels/io_kubernetes_container_name/value||str",
-		"io.kubernetes.pod.uid":"__tmpl|/labels/io_kubernetes_pod_uid/value||str",
-		"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str"
+		"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str|no_default=",
+		"io.kubernetes.container.name":"__tmpl|/labels/io_kubernetes_container_name/value||str|no_default=",
+		"io.kubernetes.pod.uid":"__tmpl|/labels/io_kubernetes_pod_uid/value||str|no_default=",
+		"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str|no_default="
 	},
 	"subcontainers":[
 	],
 	"spec":{
 		"creation_time":"__tmpl|/creation_time|2016-05-16T03:25:47Z|str",
 		"labels":{
-			"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str",
-			"io.kubernetes.container.name":"__tmpl|/labels/io_kubernetes_container_name/value||str",
-			"io.kubernetes.pod.uid":"__tmpl|/labels/io_kubernetes_pod_uid/value||str",
-			"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str"
+			"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str|no_default=",
+			"io.kubernetes.container.name":"__tmpl|/labels/io_kubernetes_container_name/value||str|no_default=",
+			"io.kubernetes.pod.uid":"__tmpl|/labels/io_kubernetes_pod_uid/value||str|no_default=",
+			"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str|no_default="
 		},
 		"has_cpu":true,
 		"cpu":{
