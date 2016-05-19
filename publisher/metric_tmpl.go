@@ -23,7 +23,6 @@ const builtinMetricTemplate = `{
 	"id":"!!",
 	"name":"!!",
 	"aliases":[
-
 	],
 	"labels":{
 		"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str",
@@ -32,12 +31,14 @@ const builtinMetricTemplate = `{
 		"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str"
 	},
 	"subcontainers":[
-
 	],
 	"spec":{
 		"creation_time":"__tmpl|/creation_time|2016-05-16T03:25:47Z|str",
 		"labels":{
-
+			"io.kubernetes.pod.name":"__tmpl|/labels/io_kubernetes_pod_name/value||str",
+			"io.kubernetes.container.name":"__tmpl|/labels/io_kubernetes_container_name/value||str",
+			"io.kubernetes.pod.uid":"__tmpl|/labels/io_kubernetes_pod_uid/value||str",
+			"io.kubernetes.pod.namespace":"__tmpl|/labels/io_kubernetes_pod_namespace/value||str"
 		},
 		"has_cpu":true,
 		"cpu":{
@@ -68,7 +69,6 @@ const builtinMetricTemplate = `{
 				"load_average":"__tmpl|/sched_load|0|int"
 			},
 			"diskio":{
-
 			},
 			"memory":{
 				"usage":"__tmpl|/cgroups/memory_stats/usage/usage|0|int",
@@ -84,7 +84,6 @@ const builtinMetricTemplate = `{
 					"pgfault":0,
 					"pgmajfault":0
 				}
-
 			},
 			"network":{
 				"name":"",
@@ -97,7 +96,6 @@ const builtinMetricTemplate = `{
 				"tx_errors":"__tmpl|/network/eth0/tx_errors|0|int",
 				"tx_dropped":"__tmpl|/network/eth0/tx_dropped|0|int",
 				"interfaces":[
-
 				],
 				"tcp":{
 					"Established":0,
@@ -125,7 +123,6 @@ const builtinMetricTemplate = `{
 					"Listen":0,
 					"Closing":0
 				}
-
 			},
 			"filesystem":[
 				{
@@ -148,11 +145,8 @@ const builtinMetricTemplate = `{
 					"io_time":0,
 					"weighted_io_time":0
 				}
-
 			]
-
 		}
-
 	]
 }
 `
