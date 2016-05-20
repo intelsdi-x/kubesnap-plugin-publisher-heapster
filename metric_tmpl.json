@@ -75,6 +75,17 @@
 				"tx_errors":"__tmpl|/network/tx_errors|0|int",
 				"tx_dropped":"__tmpl|/network/tx_dropped|0|int",
 				"interfaces":[
+					{
+						"name":"__tmpl|/name||str",
+						"rx_bytes":"__tmpl|/rx_bytes|0|int",
+						"rx_packets":"__tmpl|/rx_packets|0|int",
+						"rx_errors":"__tmpl|/rx_errors|0|int",
+						"rx_dropped":"__tmpl|/rx_dropped|0|int",
+						"tx_bytes":"__tmpl|/tx_bytes|0|int",
+						"tx_packets":"__tmpl|/tx_packets|0|int",
+						"tx_errors":"__tmpl|/tx_errors|0|int",
+						"tx_dropped":"__tmpl|/tx_dropped|0|int"
+					}
 				],
 				"tcp":{
 					"Established":"__tmpl|/connection/tcp/established|0|int",
