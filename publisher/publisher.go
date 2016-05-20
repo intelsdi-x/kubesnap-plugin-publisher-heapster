@@ -34,18 +34,18 @@ import (
 	"github.com/intelsdi-x/snap/control/plugin"
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
 	"github.com/intelsdi-x/snap/core/ctypes"
+	"github.com/satori/go.uuid"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"github.com/satori/go.uuid"
 )
 
 const (
 	name       = "heapster"
-	version    = 3
+	version    = 4
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -214,8 +214,10 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 type MetricTemplate struct {
 	source      string
 	statsSource string
+	ifaceSource string
 	mapToStats  map[string]map[string]string
 	mapToDocker map[string]map[string]string
+	mapToIface  map[string]map[string]string
 }
 
 func (f *core) loadMetricTemplate() error {
@@ -232,7 +234,7 @@ func (f *core) loadMetricTemplate() error {
 	templateObj := templateRef.(map[string]interface{})
 	extractMapping := func(obj interface{}) map[string]map[string]string {
 		const tmplMarker = "__tmpl"
-		mapping := map[string]map[string]string {}
+		mapping := map[string]map[string]string{}
 		tmplWalker := util.NewObjWalker(obj)
 		tmplWalker.Walk("/", func(target string, info os.FileInfo, _ error) error {
 			var spec map[string]interface{}
@@ -247,7 +249,7 @@ func (f *core) loadMetricTemplate() error {
 					return nil
 				}
 				spec["target"] = target
-				valueSpec := map[string]string {}
+				valueSpec := map[string]string{}
 				for k, v := range spec {
 					valueSpec[k] = v.(string)
 				}
@@ -300,28 +302,43 @@ func (f *core) loadMetricTemplate() error {
 	var statsObj interface{}
 	statsObj, statsList = statsList[0], statsList[1:]
 	map[string]interface{}(templateObj)["stats"] = statsList
+	ifaceListRef, _ := util.NewObjWalker(statsObj).Seek("/network/interfaces")
+	ifaceList := ifaceListRef.([]interface{})
+	var ifaceObj interface{}
+	ifaceObj, ifaceList = ifaceList[0], ifaceList[1:]
+	networkRef, _ := util.NewObjWalker(statsObj).Seek("/network")
+	network := networkRef.(map[string]interface{})
+	network["interfaces"] = map[string]interface{}{}
 	// extract template mappings
 	////FIXME:REMOVEIT\/
 	pri("\n\n\nthe statsObj", statsObj)
 	pri("\nthe templateObj", templateObj)
-	mapToStats :=  extractMapping(statsObj)
+	pri("\nthe ifaceObj", ifaceObj)
+	mapToStats := extractMapping(statsObj)
 	mapToDocker := extractMapping(templateObj)
+	mapToIface := extractMapping(ifaceObj)
 	////FIXME:REMOVEIT\/
 	pri("\n\n\nthe mapToStats", mapToStats)
 	pri("\nthe mapToDocker", mapToDocker)
+	pri("\nthe mapToDocker", mapToIface)
 	// replace the template positions with default values
 	applyDefaults(statsObj, mapToStats)
 	applyDefaults(templateObj, mapToDocker)
+	applyDefaults(ifaceObj, mapToIface)
 	////FIXME:REMOVEIT\/
 	pri("\n\n\nthe statsObj-1", statsObj)
 	pri("\nthe templateObj-1", templateObj)
+	pri("\nthe ifaceObj-1", ifaceObj)
 	statsTemplate, _ := json.Marshal(statsObj)
 	dockerTemplate, _ := json.Marshal(templateObj)
+	ifaceTemplate, _ := json.Marshal(ifaceObj)
 	f.metricTemplate = MetricTemplate{
 		source:      string(dockerTemplate),
 		statsSource: string(statsTemplate),
+		ifaceSource: string(ifaceTemplate),
 		mapToStats:  mapToStats,
 		mapToDocker: mapToDocker,
+		mapToIface:  mapToIface,
 	}
 	return nil
 }
@@ -387,6 +404,14 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return dockerMap, false
 		}
 	}
+	extractIfaceMetric := func(metric *plugin.MetricType) (string, string) {
+		nsSplit := metric.Namespace().Strings()
+		// /intel/docker/DOCKER_ID/network/IFACE_ID/METRIC
+		lens := len(nsSplit)
+		return nsSplit[lens-2], nsSplit[lens-1]
+	}
+	// fetchObjecForStats gets an allocated stats object for storing
+	//metrics; no object will be allocated if metric argument is  nil
 	fetchObjectForStats := func(id, path string, metric *plugin.MetricType) (map[string]interface{}, bool) {
 		var statsObj map[string]interface{}
 		var haveStats bool
@@ -402,10 +427,24 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			return statsObj, false
 		}
 	}
-	validateStatsMetric := func(path, ns string) ([]string, bool) {
-		for sourcePath, _ := range f.metricTemplate.mapToStats {
+	fetchObjectForIface := func(statsMap map[string]interface{}, metric *plugin.MetricType) (map[string]interface{}, bool) {
+		ifacesMapRef, _ := util.NewObjWalker(statsMap).Seek("/network/interfaces")
+		ifacesMap := ifacesMapRef.(map[string]interface{})
+		ifaceName, _ := extractIfaceMetric(metric)
+		if iface, haveIface := ifacesMap[ifaceName]; haveIface {
+			return iface.(map[string]interface{}), true
+		} else {
+			var ifaceObj map[string]interface{}
+			json.Unmarshal([]byte(f.metricTemplate.ifaceSource), &ifaceObj)
+			ifacesMap[ifaceName] = ifaceObj
+			return ifaceObj, true
+		}
+
+	}
+	validateMetricWithMap := func(path, ns string, mapping map[string]map[string]string) ([]string, bool) {
+		for sourcePath, _ := range mapping {
 			if strings.HasSuffix(ns, sourcePath) {
-				convSpec := f.metricTemplate.mapToStats[sourcePath]
+				convSpec := mapping[sourcePath]
 				if aliases, haveAliases := convSpec["aliases"]; haveAliases {
 					sourcePaths := append(strings.Split(aliases, ":"), sourcePath)
 					return sourcePaths, true
@@ -415,19 +454,16 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		}
 		customPath := ns[strings.LastIndex(ns, path)+len(path):]
 		return []string{customPath}, false
+
+	}
+	validateStatsMetric := func(path, ns string) ([]string, bool) {
+		return validateMetricWithMap(path, ns, f.metricTemplate.mapToStats)
 	}
 	validateDockerMetric := func(path, ns string) ([]string, bool) {
-		for sourcePath, _ := range f.metricTemplate.mapToDocker {
-			if strings.HasSuffix(ns, sourcePath) {
-				convSpec := f.metricTemplate.mapToDocker[sourcePath]
-				if aliases, haveAliases := convSpec["aliases"]; haveAliases {
-					sourcePaths := append(strings.Split(aliases, ":"), sourcePath)
-					return sourcePaths, true
-				}
-				return []string{sourcePath}, true
-			}
-		}
-		return []string{}, false
+		return validateMetricWithMap(path, ns, f.metricTemplate.mapToDocker)
+	}
+	validateIfaceMetric := func(path, ns string) ([]string, bool) {
+		return validateMetricWithMap(path, ns, f.metricTemplate.mapToIface)
 	}
 	insertIntoStats := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
@@ -450,6 +486,22 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		}
 		return
 	}
+	insertIntoIface := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
+		ns := metric.Namespace().String()
+		if sourcePaths, isIfaceMetric := validateIfaceMetric(dockerPath, ns); !isIfaceMetric {
+			return false
+		} else {
+			ifaceObj, _ := fetchObjectForIface(statsObj, metric)
+			for _, sourcePath := range sourcePaths {
+				targetPath := f.metricTemplate.mapToIface[sourcePath]["target"]
+				metricParent, _ := util.NewObjWalker(ifaceObj).Seek(filepath.Dir(targetPath))
+				metricParentMap := metricParent.(map[string]interface{})
+				metricParentMap[filepath.Base(targetPath)] = metric.Data()
+				didInsert = true
+			}
+			return true
+		}
+	}
 	insertIntoDocker := func(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
 		didInsert = false
@@ -471,8 +523,20 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		dockerObj, _ := fetchObjectForDocker(id, path, nil)
 		statsObj, haveStats := fetchObjectForStats(id, path, nil)
 		if !haveStats {
+			// no stats for that docker were allocated in this round of processing
 			return
 		}
+		// convert iface map to iface list, as expected by consumers
+		networkRef, _ := util.NewObjWalker(statsObj).Seek("/network")
+		ifaceMapRef, _ := util.NewObjWalker(networkRef).Seek("/interfaces")
+		ifaceMap := ifaceMapRef.(map[string]interface{})
+		networkMap := networkRef.(map[string]interface{})
+		ifaceList := []interface{}{}
+		for _, ifaceObj := range ifaceMap {
+			ifaceList = append(ifaceList, ifaceObj)
+		}
+		networkMap["interfaces"] = ifaceList
+
 		statsList := dockerObj["stats"].([]interface{})
 		// make sure we don't overflow  statsDepth nor  statsSpan when
 		//new  statsObj is added
@@ -511,6 +575,9 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			statsObj, _ := fetchObjectForStats(id, path, &mt)
 			if insertIntoStats(path, statsObj, &mt) {
 				stats_statsPcsdMap[path] = true
+				continue
+			}
+			if insertIntoIface(path, statsObj, &mt) {
 				continue
 			}
 			if _, firstTimeDocker := firstTimeDockers[path]; firstTimeDocker {
