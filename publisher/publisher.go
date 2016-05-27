@@ -228,7 +228,11 @@ func (f *core) loadMetricTemplate() error {
 	}
 	var templateRef interface{}
 	// parse template once for test
-	if err = json.Unmarshal([]byte(source), &templateRef); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(source))
+	decoder.UseNumber()
+
+	//if err = json.Unmarshal([]byte(source), &templateRef); err != nil {
+	if err = decoder.Decode(&templateRef); err != nil {
 		return err
 	}
 	templateObj := templateRef.(map[string]interface{})

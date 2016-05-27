@@ -27,8 +27,8 @@
 		},
 		"has_memory":true,
 		"memory":{
-			"limit":2147483647,
-			"swap_limit":2147483647
+			"limit":"__tmpl|/cgroups/memory_stats/stats/limit_in_bytes|0|int",
+			"swap_limit":"__tmpl|/cgroups/memory_stats/stats/swap_limit_in_bytes|0|int"
 		},
 		"has_network":true,
 		"has_filesystem":true,
