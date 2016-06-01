@@ -139,10 +139,10 @@ const builtinMetricTemplate = `{
 				{
 					"device":"/dev/sdx1",
 					"type":"vfs",
-					"capacity":0,
-					"usage":0,
+					"capacity":"__tmpl|/filesystem/capacity|0|int",
+					"usage":"__tmpl|/filesystem/usage|0|int",
 					"base_usage":0,
-					"available":0,
+					"available":"__tmpl|/filesystem/available|0|int",
 					"inodes_free":0,
 					"reads_completed":0,
 					"reads_merged":0,
