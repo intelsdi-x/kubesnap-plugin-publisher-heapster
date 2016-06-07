@@ -9,6 +9,11 @@
 			"Rev": "55eb11d21d2a31a3cc93838241d04800f52e823d"
 		},
 		{
+			"ImportPath": "github.com/google/cadvisor/info/v1",
+			"Comment": "v0.23.2-6-g1c8d789",
+			"Rev": "1c8d7896a5225400df51b47330b50368e548eb94"
+		},
+		{
 			"ImportPath": "github.com/gorilla/context",
 			"Rev": "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
 		},

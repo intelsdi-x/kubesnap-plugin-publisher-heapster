@@ -54,7 +54,9 @@ const builtinMetricTemplate = `{
 		"has_network":true,
 		"has_filesystem":true,
 		"has_diskio":false,
-		"has_custom_metrics":false,
+		"has_custom_metrics":true,
+		"custom_metrics":[
+		],
 		"image":"__tmpl|/image_name|docker|str"
 	},
 	"stats":[
@@ -156,8 +158,9 @@ const builtinMetricTemplate = `{
 					"io_time":0,
 					"weighted_io_time":0
 				}
-			]
+			],
+			"custom_metrics":{
+			}
 		}
 	]
-}
-`
+}`

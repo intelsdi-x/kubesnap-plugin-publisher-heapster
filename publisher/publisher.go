@@ -35,17 +35,19 @@ import (
 	"github.com/intelsdi-x/snap/control/plugin/cpolicy"
 	"github.com/intelsdi-x/snap/core/ctypes"
 	"github.com/satori/go.uuid"
+	cadv "github.com/google/cadvisor/info/v1"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+	"reflect"
 )
 
 const (
 	name       = "heapster"
-	version    = 4
+	version    = 5
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -63,6 +65,19 @@ const (
 	cfgStatsSpan       = "stats_span"
 	cfgExportTmplFile  = "export_tmpl_file"
 	cfgTstampDelta     = "timestamp_delta"
+)
+
+const (
+	customMetricName = "custom_metric_name"
+	customMetricType = "custom_metric_type"
+	customMetricFormat = "custom_metric_format"
+	customMetricUnits = "custom_metric_units"
+	customMetricContainerPath = "custom_metric_container_path"
+
+	defCustomMetricType = "gauge"
+	defCustomMetricFormat = "int"
+	defCustomMetricUnits = "none"
+	defCustomMetricContainerPath = "/"
 )
 
 type coreStats struct {
@@ -93,6 +108,7 @@ func NewInnerState() *exchange.InnerState {
 	res := &exchange.InnerState{
 		DockerPaths:   map[string]string{},
 		DockerStorage: map[string]interface{}{},
+		PendingMetrics:map[string]map[string][]cadv.MetricVal {},
 	}
 	return res
 }
@@ -297,10 +313,10 @@ func (f *core) loadMetricTemplate() error {
 			}
 		}
 	}
-	pri := func(pfx string, val interface{}) {
-		//valb, _ := json.MarshalIndent(val, "", "  ")
-		//fmt.Printf("%s) %#s\n", pfx, valb)
-	}
+	//pri := func(pfx string, val interface{}) {
+	//	//valb, _ := json.MarshalIndent(val, "", "  ")
+	//	//fmt.Printf("%s) %#s\n", pfx, valb)
+	//}
 	statsListRef, _ := util.NewObjWalker(templateObj).Seek("/stats")
 	statsList := statsListRef.([]interface{})
 	var statsObj interface{}
@@ -314,25 +330,25 @@ func (f *core) loadMetricTemplate() error {
 	network := networkRef.(map[string]interface{})
 	network["interfaces"] = map[string]interface{}{}
 	// extract template mappings
-	////FIXME:REMOVEIT\/
-	pri("\n\n\nthe statsObj", statsObj)
-	pri("\nthe templateObj", templateObj)
-	pri("\nthe ifaceObj", ifaceObj)
+	////FIXME:REMOVEIT
+	//pri("\n\n\nthe statsObj", statsObj)
+	//pri("\nthe templateObj", templateObj)
+	//pri("\nthe ifaceObj", ifaceObj)
 	mapToStats := extractMapping(statsObj)
 	mapToDocker := extractMapping(templateObj)
 	mapToIface := extractMapping(ifaceObj)
-	////FIXME:REMOVEIT\/
-	pri("\n\n\nthe mapToStats", mapToStats)
-	pri("\nthe mapToDocker", mapToDocker)
-	pri("\nthe mapToDocker", mapToIface)
+	////FIXME:REMOVEIT
+	//pri("\n\n\nthe mapToStats", mapToStats)
+	//pri("\nthe mapToDocker", mapToDocker)
+	//pri("\nthe mapToDocker", mapToIface)
 	// replace the template positions with default values
 	applyDefaults(statsObj, mapToStats)
 	applyDefaults(templateObj, mapToDocker)
 	applyDefaults(ifaceObj, mapToIface)
-	////FIXME:REMOVEIT\/
-	pri("\n\n\nthe statsObj-1", statsObj)
-	pri("\nthe templateObj-1", templateObj)
-	pri("\nthe ifaceObj-1", ifaceObj)
+	////FIXME:REMOVEIT
+	//pri("\n\n\nthe statsObj-1", statsObj)
+	//pri("\nthe templateObj-1", templateObj)
+	//pri("\nthe ifaceObj-1", ifaceObj)
 	statsTemplate, _ := json.Marshal(statsObj)
 	dockerTemplate, _ := json.Marshal(templateObj)
 	ifaceTemplate, _ := json.Marshal(ifaceObj)
@@ -365,19 +381,81 @@ func (f *core) loadTemplateSource() (string, error) {
 	}
 }
 
+type customMetricSpec struct {
+	Name string
+
+}
+
+func (f *core) extractCustomMetric(metric *plugin.MetricType) (dockerPath string, spec cadv.MetricSpec, valid bool) {
+	tags := metric.Tags()
+	ns := metric.Namespace()
+	dockerPath = ""
+	spec = cadv.MetricSpec{
+		Type: defCustomMetricType,
+		Format: defCustomMetricFormat,
+	}
+	var haveName, haveType, haveFormat, haveUnits, haveDockerPath bool
+	if spec.Name, haveName = tags[customMetricName]; !haveName {
+		spec.Name = ns.String()
+	}
+	tmpTag := ""
+	if tmpTag, haveType = tags[customMetricType]; haveType {
+		spec.Type = cadv.MetricType(tmpTag)
+	}
+	if tmpTag, haveFormat = tags[customMetricFormat]; haveFormat {
+		spec.Format = cadv.DataType(tmpTag)
+	}
+	//FIXME:RMVIT ::fixed to recognize mock plugin metrics
+	//if !haveName && strings.HasPrefix(ns.String(), "/intel/mock/") {
+	//	haveName = true
+	//	spec.Format = cadv.FloatType
+	//}
+	if spec.Units, haveUnits = tags[customMetricUnits]; !haveUnits {
+		spec.Units = defCustomMetricUnits
+	}
+	if dockerPath, haveDockerPath = tags[customMetricContainerPath]; !haveDockerPath {
+		dockerPath = defCustomMetricContainerPath
+	}
+	if haveName || haveType || haveFormat || haveUnits || haveDockerPath {
+		return dockerPath, spec, true
+	} else {
+		return "", spec, false
+	}
+}
+
+func (f *core) extractDockerIdAndPathForCustomMetric(metric *plugin.MetricType) (string, string, bool) {
+	if dockerPath, _, valid := f.extractCustomMetric(metric); !valid {
+		return "", "", false
+	} else {
+		id := filepath.Base(dockerPath)
+		return id, dockerPath, true
+	}
+
+}
+
+func (f *core) validateCustomMetric(metric *plugin.MetricType) (spec cadv.MetricSpec, validMetric bool) {
+	if _, spec, validMetric = f.extractCustomMetric(metric); validMetric {
+		return spec, true
+	}
+	return spec, false
+}
+
 func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string, bool) {
 	ns := metric.Namespace().String()
-	if !strings.HasPrefix(ns, dockerMetricPrefix) {
+	if strings.HasPrefix(ns, dockerMetricPrefix) {
+		tailSplit := strings.Split(strings.TrimLeft(strings.TrimPrefix(ns, dockerMetricPrefix), "/"), "/")
+		id := tailSplit[0]
+		path := "/" + id
+		if id == "root" {
+			id = "/"
+			path = "/"
+		}
+		return id, path, true
+	} else if id, path, validCustomMetric := f.extractDockerIdAndPathForCustomMetric(metric); validCustomMetric {
+		return id, path, true
+	} else {
 		return "", "", false
 	}
-	tailSplit := strings.Split(strings.TrimLeft(strings.TrimPrefix(ns, dockerMetricPrefix), "/"), "/")
-	id := tailSplit[0]
-	path := "/" + id
-	if id == "root" {
-		id = "/"
-		path = "/"
-	}
-	return id, path, true
 }
 
 func (f *core) processMetrics(metrics []plugin.MetricType) {
@@ -445,7 +523,7 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		}
 
 	}
-	validateMetricWithMap := func(path, ns string, mapping map[string]map[string]string) ([]string, bool) {
+	validateMetricWithMap := func(dockerPath, ns string, mapping map[string]map[string]string) ([]string, bool) {
 		for sourcePath, _ := range mapping {
 			if strings.HasSuffix(ns, sourcePath) {
 				convSpec := mapping[sourcePath]
@@ -456,18 +534,18 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 				return []string{sourcePath}, true
 			}
 		}
-		customPath := ns[strings.LastIndex(ns, path)+len(path):]
+		customPath := ns[strings.LastIndex(ns, dockerPath)+len(dockerPath):]
 		return []string{customPath}, false
 
 	}
-	validateStatsMetric := func(path, ns string) ([]string, bool) {
-		return validateMetricWithMap(path, ns, f.metricTemplate.mapToStats)
+	validateStatsMetric := func(dockerPath, ns string) ([]string, bool) {
+		return validateMetricWithMap(dockerPath, ns, f.metricTemplate.mapToStats)
 	}
-	validateDockerMetric := func(path, ns string) ([]string, bool) {
-		return validateMetricWithMap(path, ns, f.metricTemplate.mapToDocker)
+	validateDockerMetric := func(dockerPath, ns string) ([]string, bool) {
+		return validateMetricWithMap(dockerPath, ns, f.metricTemplate.mapToDocker)
 	}
-	validateIfaceMetric := func(path, ns string) ([]string, bool) {
-		return validateMetricWithMap(path, ns, f.metricTemplate.mapToIface)
+	validateIfaceMetric := func(dockerPath, ns string) ([]string, bool) {
+		return validateMetricWithMap(dockerPath, ns, f.metricTemplate.mapToIface)
 	}
 	insertIntoStats := func(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 		ns := metric.Namespace().String()
@@ -480,13 +558,6 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 				metricParentMap[filepath.Base(targetPath)] = metric.Data()
 				didInsert = true
 			}
-		} else {
-			//TODO: handle custom metrics
-			//snapMetricsList, _ := util.NewObjWalker(statsObj).Seek("/stats/custom_metrics/SNAP")
-			//oneMetric := map[string]interface{} {}
-			//oneMetric["name"] = dockerMetricPrefix + "/"+ sourcePath
-			//oneMetric["type"] = "gauge"
-			//oneMetric[""]
 		}
 		return
 	}
@@ -522,11 +593,83 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		}
 		return
 	}
+	insertIntoCustomMetrics := func(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
+		didInsert = false
+		if _, spec, valid := f.extractCustomMetric(metric); !valid {
+			return
+		} else {
+			//-- insert spec
+			specMap := dockerObj["spec"].(map[string]interface{})
+			metricList := specMap["custom_metrics"].([]interface{})
+			foundSpec := false
+			for _, ckSpecObj := range metricList {
+				ckSpec := ckSpecObj.(cadv.MetricSpec)
+				if ckSpec.Name == spec.Name {
+					foundSpec = true
+					break
+				}
+			}
+			if !foundSpec {
+				metricList = append(metricList, spec)
+				specMap["custom_metrics"] = metricList
+			}
+			pri("custom_metrics: now testing value for %v, of %v \n", metric.Namespace().String(), reflect.TypeOf(metric.Data()))
+			// find room for custom metrics
+			dockerValuesMap, gotDockerValuesMap := f.state.PendingMetrics[dockerPath]
+			if !gotDockerValuesMap {
+				dockerValuesMap = map[string][]cadv.MetricVal {}
+				f.state.PendingMetrics[dockerPath] = dockerValuesMap
+			}
+			statsList, _:= dockerValuesMap[spec.Name]
+			customVal := cadv.MetricVal{Timestamp: metric.Timestamp()}
+			switch spec.Format {
+			case cadv.IntType:
+				switch i := metric.Data().(type) {
+				case int64:
+					customVal.IntValue = int64(i)
+				case uint64:
+					customVal.IntValue = int64(i)
+				case int32:
+					customVal.IntValue = int64(i)
+				case uint32:
+					customVal.IntValue = int64(i)
+				default:
+					pri("metric %s cant be handled as IntValue", metric.Namespace().String())
+					return
+				}
+			case cadv.FloatType:
+				switch i := metric.Data().(type) {
+				case float32:
+					customVal.FloatValue = float64(i)
+				case float64:
+					customVal.FloatValue = float64(i)
+				case int64:
+					customVal.FloatValue = float64(i)
+				case uint64:
+					customVal.FloatValue = float64(i)
+				case int32:
+					customVal.FloatValue = float64(i)
+				case uint32:
+					customVal.FloatValue = float64(i)
+				default:
+					pri("metric %s cant be handled as FloatValue", metric.Namespace().String())
+					return
+				}
+			}
+			statsList = append(statsList, customVal)
+			dockerValuesMap[spec.Name] = statsList
+			didInsert = true
+			//FIXME:RMVIT\/
+			defer pri("custom_metrics: did we insert?: %v, the %v\n", didInsert, spec.Name)
+		}
+		return
+	}
+
 
 	mergeStatsForDocker := func(id, path string) {
 		dockerObj, _ := fetchObjectForDocker(id, path, nil)
 		statsObj, haveStats := fetchObjectForStats(id, path, nil)
-		if !haveStats {
+		if !haveStats || len(statsObj) == 0 {
 			// no stats for that docker were allocated in this round of processing
 			return
 		}
@@ -567,32 +710,103 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 		makeRoomForStats()
 		statsList = append(statsList, statsObj)
 		dockerObj["stats"] = statsList
+
+		//--merge custom metrics
+		mergePendingMetrics := func() {
+			dockerValuesMap, gotDockerValuesMap := f.state.PendingMetrics[path]
+			if !gotDockerValuesMap {
+				return
+			}
+			for _, statsElem := range statsList {
+				statsObj = statsElem.(map[string]interface{})
+				targetMap := statsObj["custom_metrics"].(map[string]interface{})
+				refStamp, _ := util.ParseTime(statsObj["timestamp"].(string))
+				for metricName, valueList := range dockerValuesMap {
+					for i, value := range valueList {
+						if !value.Timestamp.Before(refStamp) {
+							continue
+						}
+						targetList, _ := targetMap[metricName].([]interface{})
+						targetMap[metricName] = append(targetList, value)
+						valueList = append(valueList[:i], valueList[i + 1:]...)
+					}
+					dockerValuesMap[metricName] = valueList
+				}
+			}
+		}
+		dropTooOldPendingMetrics := func() {
+			dockerValuesMap, gotDockerValuesMap := f.state.PendingMetrics[path]
+			if !gotDockerValuesMap {
+				return
+			}
+			var oldestStamp *time.Time = nil
+			for _, statsElem := range statsList {
+				statsObj = statsElem.(map[string]interface{})
+				refStamp, _ := util.ParseTime(statsObj["timestamp"].(string))
+				if oldestStamp == nil || refStamp.Before(*oldestStamp) {
+					oldestStamp = &refStamp
+				}
+			}
+			if oldestStamp == nil {
+				return
+			}
+			for metricName, valueList := range dockerValuesMap {
+				for i, value := range valueList {
+					if value.Timestamp.Before(*oldestStamp) {
+						valueList = append(valueList[:i], valueList[i + 1:]...)
+					}
+				}
+				dockerValuesMap[metricName] = valueList
+			}
+		}
+		mergePendingMetrics()
+		dropTooOldPendingMetrics()
 	}
-	//-- main processing loop
+	//-- MAIN processing loop
 	firstTimeDockers := map[string]bool{}
+	//FIXME:RMVIT\/
+	counter := 0
 	for _, mt := range metrics {
 		if id, path, isDockerMetric := f.extractDockerIdAndPath(&mt); isDockerMetric {
 			dockerObj, knownDocker := fetchObjectForDocker(id, path, &mt)
 			if !knownDocker {
 				firstTimeDockers[path] = true
 			}
+			_, firstTimeDocker := firstTimeDockers[path]
 			statsObj, _ := fetchObjectForStats(id, path, &mt)
 			if insertIntoStats(path, statsObj, &mt) {
 				stats_statsPcsdMap[path] = true
-				continue
+				goto finish
 			}
 			if insertIntoIface(path, statsObj, &mt) {
-				continue
+				goto finish
 			}
-			if _, firstTimeDocker := firstTimeDockers[path]; firstTimeDocker {
-				insertIntoDocker(path, dockerObj, &mt)
+			if knownDocker && insertIntoCustomMetrics(path, dockerObj, &mt) {
+				goto finish
 			}
+			if firstTimeDocker && insertIntoDocker(path, dockerObj, &mt) {
+				goto finish
+			}
+			finish: counter++
+
 		}
 	}
 	for path, id := range dockerPaths {
 		mergeStatsForDocker(id, path)
 	}
-	// update core stats for debugging
+	//-- DEBUG - update core stats for debugging
+	//FIXME:RMVIT\/
+	{
+		maxPendingStats := 0
+		for _, m := range f.state.PendingMetrics {
+			for _, v := range m {
+				if len(v) > maxPendingStats {
+					maxPendingStats = len(v)
+				}
+			}
+		}
+		pri("max no# pending stats: %v", maxPendingStats)
+	}
 	f.stats.metricsRxRecently = len(metrics)
 	f.stats.metricsRxTotal += len(metrics)
 	if len(stats_dockersPcsdMap) > f.stats.containersRxMax {
@@ -606,4 +820,19 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 	f.stats.statsRxRecently = stats_statsPcsdNum
 	f.stats.statsRxTotal += stats_statsPcsdNum
 	f.logger.Infof("processing stats: %+v\n", f.stats)
+}
+
+var disablePri = false
+
+func init() {
+	if os.Getenv("DISABLE_PRI") == "1" {
+		disablePri = true
+		pri = func(_ string, _ ...interface{}) {
+			// nop
+		}
+	}
+}
+
+var pri = func(format string, item ...interface{}) {
+	fmt.Fprintf(os.Stderr, format +"\n", item...)
 }
