@@ -22,6 +22,7 @@ package exchange
 import (
 	"sync"
 	"time"
+	cadv "github.com/google/cadvisor/info/v1"
 )
 
 type StatsRequest struct {
@@ -49,6 +50,7 @@ type StatsRequest struct {
 
 type InnerState struct {
 	sync.RWMutex
-	DockerPaths   map[string]string
-	DockerStorage map[string]interface{}
+	DockerPaths    map[string]string
+	DockerStorage  map[string]interface{}
+	PendingMetrics map[string]map[string][]cadv.MetricVal
 }
