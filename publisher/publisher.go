@@ -43,6 +43,7 @@ import (
 	"sync"
 	"time"
 	"reflect"
+	"runtime/debug"
 )
 
 const (
@@ -136,6 +137,7 @@ func (f *core) Publish(contentType string, content []byte, config map[string]cty
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "Defeated by errors in Publish: %s, %#v", r, r)
+			debug.PrintStack()
 			panic(r)
 		}
 	}()
@@ -440,7 +442,7 @@ func (f *core) validateCustomMetric(metric *plugin.MetricType) (spec cadv.Metric
 	return spec, false
 }
 
-func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string, bool) {
+func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (id string, path string, anyMetric bool, customMetric bool) {
 	ns := metric.Namespace().String()
 	if strings.HasPrefix(ns, dockerMetricPrefix) {
 		tailSplit := strings.Split(strings.TrimLeft(strings.TrimPrefix(ns, dockerMetricPrefix), "/"), "/")
@@ -450,11 +452,11 @@ func (f *core) extractDockerIdAndPath(metric *plugin.MetricType) (string, string
 			id = "/"
 			path = "/"
 		}
-		return id, path, true
+		return id, path, true, false
 	} else if id, path, validCustomMetric := f.extractDockerIdAndPathForCustomMetric(metric); validCustomMetric {
-		return id, path, true
+		return id, path, true, true
 	} else {
-		return "", "", false
+		return "", "", false, false
 	}
 }
 
@@ -722,15 +724,16 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 				targetMap := statsObj["custom_metrics"].(map[string]interface{})
 				refStamp, _ := util.ParseTime(statsObj["timestamp"].(string))
 				for metricName, valueList := range dockerValuesMap {
-					for i, value := range valueList {
+					filteredPendingValues := make([]cadv.MetricVal, 0, len(valueList))
+					for _, value := range valueList {
 						if !value.Timestamp.Before(refStamp) {
+							filteredPendingValues = append(filteredPendingValues, value)
 							continue
 						}
 						targetList, _ := targetMap[metricName].([]interface{})
 						targetMap[metricName] = append(targetList, value)
-						valueList = append(valueList[:i], valueList[i + 1:]...)
 					}
-					dockerValuesMap[metricName] = valueList
+					dockerValuesMap[metricName] = filteredPendingValues
 				}
 			}
 		}
@@ -765,9 +768,9 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 	//-- MAIN processing loop
 	firstTimeDockers := map[string]bool{}
 	//FIXME:RMVIT\/
-	counter := 0
+	countRegularStats := 0
 	for _, mt := range metrics {
-		if id, path, isDockerMetric := f.extractDockerIdAndPath(&mt); isDockerMetric {
+		if id, path, isDockerMetric, isCustomMetric := f.extractDockerIdAndPath(&mt); isDockerMetric {
 			dockerObj, knownDocker := fetchObjectForDocker(id, path, &mt)
 			if !knownDocker {
 				firstTimeDockers[path] = true
@@ -787,12 +790,16 @@ func (f *core) processMetrics(metrics []plugin.MetricType) {
 			if firstTimeDocker && insertIntoDocker(path, dockerObj, &mt) {
 				goto finish
 			}
-			finish: counter++
+			finish: if !isCustomMetric {
+				countRegularStats++
+			}
 
 		}
 	}
-	for path, id := range dockerPaths {
-		mergeStatsForDocker(id, path)
+	if countRegularStats > 0 {
+		for path, id := range dockerPaths {
+			mergeStatsForDocker(id, path)
+		}
 	}
 	//-- DEBUG - update core stats for debugging
 	//FIXME:RMVIT\/
