@@ -33,6 +33,7 @@ import (
 	"github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/util"
 	"sync"
 	"time"
+	"sort"
 )
 
 var logger *log.Logger
@@ -75,6 +76,25 @@ func copyFlat(data map[string]interface{}) map[string]interface{} {
 	return res
 }
 
+type statsListType []interface{}
+
+func (s statsListType) Len() int {
+	return len(s)
+}
+
+func (s statsListType) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
+func (s statsListType) Less(i, j int) bool {
+	l := s[i].(map[string]interface{})
+	r := s[j].(map[string]interface{})
+	a, _ := util.ParseTime(l["timestamp"].(string))
+	b, _ := util.ParseTime(r["timestamp"].(string))
+	// allow reverse order - most recent first
+	return !a.Before(b)
+}
+
 func buildStatsResponse(server *server, stats *exchange.StatsRequest) (interface{}) {
 	state := server.state
 	state.RLock()
@@ -100,6 +120,7 @@ func buildStatsResponse(server *server, stats *exchange.StatsRequest) (interface
 				break
 			}
 		}
+		sort.Sort(statsListType(statsCopy))
 		dockerCopy["stats"] = statsCopy
 		res[dockerName] = dockerCopy
 	}
