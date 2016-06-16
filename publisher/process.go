@@ -358,6 +358,18 @@ func (f *processorContext) insertIntoCustomMetrics(dockerPath string, dockerObj 
 				customVal.IntValue = int64(i)
 			case uint32:
 				customVal.IntValue = int64(i)
+			case uint16:
+				customVal.IntValue = int64(i)
+			case int16:
+				customVal.IntValue = int64(i)
+			case uint8:
+				customVal.IntValue = int64(i)
+			case int8:
+				customVal.IntValue = int64(i)
+			case uint:
+				customVal.IntValue = int64(i)
+			case int:
+				customVal.IntValue = int64(i)
 			default:
 				pri("metric %s cant be handled as IntValue", metric.Namespace().String())
 				return
@@ -375,6 +387,18 @@ func (f *processorContext) insertIntoCustomMetrics(dockerPath string, dockerObj 
 			case int32:
 				customVal.FloatValue = float64(i)
 			case uint32:
+				customVal.FloatValue = float64(i)
+			case int16:
+				customVal.FloatValue = float64(i)
+			case uint16:
+				customVal.FloatValue = float64(i)
+			case int8:
+				customVal.FloatValue = float64(i)
+			case uint8:
+				customVal.FloatValue = float64(i)
+			case int:
+				customVal.FloatValue = float64(i)
+			case uint:
 				customVal.FloatValue = float64(i)
 			default:
 				pri("metric %s cant be handled as FloatValue", metric.Namespace().String())
