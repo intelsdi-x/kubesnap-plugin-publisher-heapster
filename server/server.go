@@ -106,8 +106,13 @@ func buildStatsResponse(server *server, stats *exchange.StatsRequest) (interface
 	for dockerName, dockerObj := range ref {
 		dockerCopy := copyFlat(dockerObj.(map[string]interface{}))
 		statsList := dockerCopy["stats"].([]interface{})
-		statsCopy := make([]interface{}, 0, len(statsList))
+		statsSorted := make([]interface{}, 0, len(statsList))
 		for _, statsObj := range statsList {
+			statsSorted = append(statsSorted, statsObj)
+		}
+		sort.Sort(statsListType(statsSorted))
+		statsCopy := make([]interface{}, 0, len(statsSorted))
+		for _, statsObj := range statsSorted {
 			statsMap := statsObj.(map[string]interface{})
 			ckStamp, _ := util.ParseTime(statsMap["timestamp"].(string))
 			if ckStamp.Before(stats.Start) || ckStamp.After(stats.End) {
@@ -120,7 +125,6 @@ func buildStatsResponse(server *server, stats *exchange.StatsRequest) (interface
 				break
 			}
 		}
-		sort.Sort(statsListType(statsCopy))
 		dockerCopy["stats"] = statsCopy
 		res[dockerName] = dockerCopy
 	}
