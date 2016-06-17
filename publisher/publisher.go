@@ -41,7 +41,7 @@ import (
 
 const (
 	name       = "heapster"
-	version    = 502
+	version    = 503
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -97,6 +97,10 @@ type core struct {
 }
 
 type ConfigMap map[string]ctypes.ConfigValue
+
+func init() {
+	gob.Register(map[string]float64 {})
+}
 
 func NewInnerState() *exchange.InnerState {
 	res := &exchange.InnerState{
@@ -223,7 +227,8 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 }
 
 func init() {
-	if os.Getenv("DISABLE_PRI") == "1" {
+	//if os.Getenv("DISABLE_PRI") == "1" {
+	if os.Getenv("ENABLE_PRI") != "1" {
 		pri = func(_ string, _ ...interface{}) {
 			// nop
 		}
