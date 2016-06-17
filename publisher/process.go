@@ -24,6 +24,7 @@ import (
 	cadv "github.com/google/cadvisor/info/v1"
 	"github.com/intelsdi-x/kubesnap-plugin-publisher-heapster/util"
 	"github.com/intelsdi-x/snap/control/plugin"
+	score "github.com/intelsdi-x/snap/core"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -141,7 +142,7 @@ func (f *processorContext) validateIfaceMetric(dockerPath, ns string) ([]string,
 }
 
 func (f *processorContext) validateCustomMetric(metric *plugin.MetricType) (spec cadv.MetricSpec, validMetric bool) {
-	if _, spec, validMetric = f.extractCustomMetric(metric); validMetric {
+	if _, spec, validMetric = f.extractOneCustomMetric(metric); validMetric {
 		return spec, true
 	}
 	return spec, false
@@ -207,7 +208,48 @@ func (f *processorContext) fetchObjectForIface(statsMap map[string]interface{}, 
 
 }
 
-func (f *processorContext) extractCustomMetric(metric *plugin.MetricType) (dockerPath string, spec cadv.MetricSpec, valid bool) {
+func (f *processorContext) extractCustomMetrics(metric *plugin.MetricType) (dockerPath string, specs []cadv.MetricSpec, valid bool) {
+	copyMetric := func(metric plugin.MetricType, nsSuffix string) *plugin.MetricType {
+		res := metric
+		res.Tags_ = make(map[string]string, len(metric.Tags_))
+		for k, v := range metric.Tags_ {
+			res.Tags_[k] = v
+		}
+		res.Namespace_ = metric.Namespace_[:]
+		if nsSuffix != "" {
+			res.Namespace_ = score.Namespace(res.Namespace_).AddStaticElement(nsSuffix)
+		}
+		return &res
+	}
+	if valueMap, isMap := metric.Data().(map[string]float64); !isMap {
+		dockerPath1, spec1, valid1 := f.extractOneCustomMetric(metric)
+		if !valid1 {
+			return "", specs, false
+		}
+		specs = []cadv.MetricSpec {spec1}
+		return dockerPath1, specs, true
+	} else {
+		specs = make([]cadv.MetricSpec, 0, len(valueMap))
+		valid = false
+		dockerPath = ""
+		for k, v := range valueMap {
+			nuMetric := copyMetric(*metric, k)
+			nuMetric.Data_ = v
+			dockerPath1, spec1, valid1 := f.extractOneCustomMetric(nuMetric)
+			if dockerPath == "" {
+				dockerPath = dockerPath1
+			}
+			valid = valid || valid1
+			specs = append(specs, spec1)
+		}
+		if valid {
+			return dockerPath, specs, true
+		}
+		return "", specs[:0], false
+	}
+}
+
+func (f *processorContext) extractOneCustomMetric(metric *plugin.MetricType) (dockerPath string, spec cadv.MetricSpec, valid bool) {
 	tags := metric.Tags()
 	ns := metric.Namespace()
 	dockerPath = ""
@@ -239,8 +281,93 @@ func (f *processorContext) extractCustomMetric(metric *plugin.MetricType) (docke
 	}
 }
 
+func (f *processorContext) extractCustomValues(metric *plugin.MetricType, specs []cadv.MetricSpec) map[string]cadv.MetricVal {
+	res := make(map[string]cadv.MetricVal, len(specs))
+	if valueMap, isMap := metric.Data_.(map[string]float64); !isMap {
+		//FIXME:RMVIT\/
+		pri("custom_metrics: now probing value for %v, of %v; got specs: %+v \n", metric.Namespace().String(), reflect.TypeOf(metric.Data()), specs)
+		value, ok := f.extractOneCustomValue(&specs[0], metric.Timestamp_, metric.Data_)
+		if ok {
+			res[specs[0].Name] = value
+		}
+	} else {
+		for _, spec := range specs {
+			value, ok := f.extractOneCustomValue(&spec, metric.Timestamp_, valueMap[filepath.Base(spec.Name)])
+			//FIXME:RMVIT\/
+			pri("custom_metrics: probing one of values for %v, key: %v, value of: %v; got spec: %+v; is it ok: %v \n", metric.Namespace().String(), spec.Name, reflect.TypeOf(valueMap[spec.Name]), spec, ok)
+			if ok {
+				res[spec.Name] = value
+			}
+		}
+	}
+	return res
+}
+
+func (f *processorContext) extractOneCustomValue(spec *cadv.MetricSpec, timeStamp time.Time, value interface{}) (cadv.MetricVal, bool) {
+	customVal := cadv.MetricVal{Timestamp: timeStamp}
+	switch spec.Format {
+	case cadv.IntType:
+		switch i := value.(type) {
+		case int64:
+			customVal.IntValue = int64(i)
+		case uint64:
+			customVal.IntValue = int64(i)
+		case int32:
+			customVal.IntValue = int64(i)
+		case uint32:
+			customVal.IntValue = int64(i)
+		case uint16:
+			customVal.IntValue = int64(i)
+		case int16:
+			customVal.IntValue = int64(i)
+		case uint8:
+			customVal.IntValue = int64(i)
+		case int8:
+			customVal.IntValue = int64(i)
+		case uint:
+			customVal.IntValue = int64(i)
+		case int:
+			customVal.IntValue = int64(i)
+		default:
+			pri("metric %s cant be handled as IntValue", spec.Name)
+			return customVal, false
+		}
+	case cadv.FloatType:
+		switch i := value.(type) {
+		case float32:
+			customVal.FloatValue = float64(i)
+		case float64:
+			customVal.FloatValue = float64(i)
+		case int64:
+			customVal.FloatValue = float64(i)
+		case uint64:
+			customVal.FloatValue = float64(i)
+		case int32:
+			customVal.FloatValue = float64(i)
+		case uint32:
+			customVal.FloatValue = float64(i)
+		case int16:
+			customVal.FloatValue = float64(i)
+		case uint16:
+			customVal.FloatValue = float64(i)
+		case int8:
+			customVal.FloatValue = float64(i)
+		case uint8:
+			customVal.FloatValue = float64(i)
+		case int:
+			customVal.FloatValue = float64(i)
+		case uint:
+			customVal.FloatValue = float64(i)
+		default:
+			pri("metric %s cant be handled as FloatValue", spec.Name)
+			return customVal, false
+		}
+	}
+	return customVal, true
+}
+
 func (f *processorContext) extractDockerIdAndPathForCustomMetric(metric *plugin.MetricType) (string, string, bool) {
-	if dockerPath, _, valid := f.extractCustomMetric(metric); !valid {
+	if dockerPath, _, valid := f.extractCustomMetrics(metric); !valid {
 		return "", "", false
 	} else {
 		id := filepath.Base(dockerPath)
@@ -320,12 +447,16 @@ func (f *processorContext) insertIntoDocker(dockerPath string, dockerObj map[str
 
 func (f *processorContext) insertIntoCustomMetrics(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 	didInsert = false
-	if _, spec, valid := f.extractCustomMetric(metric); !valid {
+	_, specs, valid := f.extractCustomMetrics(metric)
+	if !valid {
 		return
-	} else {
-		//-- insert spec
-		specMap := dockerObj["spec"].(map[string]interface{})
-		metricList := specMap["custom_metrics"].([]interface{})
+	}
+	values := f.extractCustomValues(metric, specs)
+	//-- insert spec
+	specMap := dockerObj["spec"].(map[string]interface{})
+	metricList := specMap["custom_metrics"].([]interface{})
+	dbg_valuesIn := []string {}
+	for _, spec := range specs {
 		foundSpec := false
 		for _, ckSpecObj := range metricList {
 			ckSpec := ckSpecObj.(cadv.MetricSpec)
@@ -338,7 +469,16 @@ func (f *processorContext) insertIntoCustomMetrics(dockerPath string, dockerObj 
 			metricList = append(metricList, spec)
 			specMap["custom_metrics"] = metricList
 		}
-		pri("custom_metrics: now testing value for %v, of %v \n", metric.Namespace().String(), reflect.TypeOf(metric.Data()))
+		customVal, validVal := values[spec.Name]
+		if !validVal {
+			//FIXME:RMVIT\/
+			pri("custom_val/insert: tried for %v, found: false", spec.Name)
+			continue
+		}
+		//FIXME:RMVIT\/
+		pri("custom_val/insert: tried for %v, found: true, got: %+v", spec.Name, customVal)
+		dbg_valuesIn = append(dbg_valuesIn, spec.Name)
+
 		// find room for custom metrics
 		dockerValuesMap, gotDockerValuesMap := f.state.PendingMetrics[dockerPath]
 		if !gotDockerValuesMap {
@@ -346,71 +486,12 @@ func (f *processorContext) insertIntoCustomMetrics(dockerPath string, dockerObj 
 			f.state.PendingMetrics[dockerPath] = dockerValuesMap
 		}
 		statsList, _ := dockerValuesMap[spec.Name]
-		customVal := cadv.MetricVal{Timestamp: metric.Timestamp()}
-		switch spec.Format {
-		case cadv.IntType:
-			switch i := metric.Data().(type) {
-			case int64:
-				customVal.IntValue = int64(i)
-			case uint64:
-				customVal.IntValue = int64(i)
-			case int32:
-				customVal.IntValue = int64(i)
-			case uint32:
-				customVal.IntValue = int64(i)
-			case uint16:
-				customVal.IntValue = int64(i)
-			case int16:
-				customVal.IntValue = int64(i)
-			case uint8:
-				customVal.IntValue = int64(i)
-			case int8:
-				customVal.IntValue = int64(i)
-			case uint:
-				customVal.IntValue = int64(i)
-			case int:
-				customVal.IntValue = int64(i)
-			default:
-				pri("metric %s cant be handled as IntValue", metric.Namespace().String())
-				return
-			}
-		case cadv.FloatType:
-			switch i := metric.Data().(type) {
-			case float32:
-				customVal.FloatValue = float64(i)
-			case float64:
-				customVal.FloatValue = float64(i)
-			case int64:
-				customVal.FloatValue = float64(i)
-			case uint64:
-				customVal.FloatValue = float64(i)
-			case int32:
-				customVal.FloatValue = float64(i)
-			case uint32:
-				customVal.FloatValue = float64(i)
-			case int16:
-				customVal.FloatValue = float64(i)
-			case uint16:
-				customVal.FloatValue = float64(i)
-			case int8:
-				customVal.FloatValue = float64(i)
-			case uint8:
-				customVal.FloatValue = float64(i)
-			case int:
-				customVal.FloatValue = float64(i)
-			case uint:
-				customVal.FloatValue = float64(i)
-			default:
-				pri("metric %s cant be handled as FloatValue", metric.Namespace().String())
-				return
-			}
-		}
 		statsList = append(statsList, customVal)
 		dockerValuesMap[spec.Name] = statsList
-		didInsert = true
-		//FIXME:RMVIT\/
-		defer pri("custom_metrics: did we insert?: %v, the %v\n", didInsert, spec.Name)
+		didInsert = didInsert || true
 	}
+	//FIXME:RMVIT\/
+	defer pri("custom_metrics: did we insert?: %v, resulting values: %v\n", didInsert, dbg_valuesIn)
 	return
 }
 
