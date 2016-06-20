@@ -37,11 +37,12 @@ import (
 	"sync"
 	"time"
 	"runtime/debug"
+	"strings"
 )
 
 const (
 	name       = "heapster"
-	version    = 503
+	version    = 504
 	pluginType = plugin.PublisherPluginType
 )
 
@@ -227,8 +228,8 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 }
 
 func init() {
-	//if os.Getenv("DISABLE_PRI") == "1" {
-	if os.Getenv("ENABLE_PRI") != "1" {
+	if os.Getenv("DISABLE_PRI") == "1" {
+	//if os.Getenv("ENABLE_PRI") != "1" {
 		pri = func(_ string, _ ...interface{}) {
 			// nop
 		}
@@ -236,5 +237,9 @@ func init() {
 }
 
 var pri = func(format string, item ...interface{}) {
-	fmt.Fprintf(os.Stderr, format +"\n", item...)
+	if strings.Contains(format, "%") || len(item) == 0 {
+		fmt.Fprintf(os.Stderr, format +"\n", item...)
+	} else {
+		fmt.Fprintf(os.Stderr, format +"%v \n", item...)
+	}
 }

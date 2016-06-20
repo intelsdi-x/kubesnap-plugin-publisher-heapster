@@ -33,9 +33,11 @@ type MetricTemplate struct {
 	source      string
 	statsSource string
 	ifaceSource string
+	fsSource string
 	mapToStats  map[string]map[string]string
 	mapToDocker map[string]map[string]string
 	mapToIface  map[string]map[string]string
+	mapToFs map[string]map[string]string
 }
 
 func (f *core) loadMetricTemplate() error {
@@ -76,6 +78,13 @@ func (f *core) loadMetricTemplate() error {
 					valueSpec[k] = v.(string)
 				}
 				src := valueSpec["src"]
+				if ellIdx := strings.LastIndex(src, "..."); ellIdx >= 0 {
+					ptrn := ""
+					ptrn, src = src[:ellIdx], src[ellIdx + 3:]
+					ptrn = strings.Replace(ptrn, "...", ".*", -1)
+					valueSpec["src"] = src
+					valueSpec["ptrn"] = ptrn
+				}
 				// if have another spec for this source path,
 				//record new value spec as alias
 				if rootMapping, haveRoot := mapping[src]; haveRoot {
@@ -124,6 +133,7 @@ func (f *core) loadMetricTemplate() error {
 	var statsObj interface{}
 	statsObj, statsList = statsList[0], statsList[1:]
 	map[string]interface{}(templateObj)["stats"] = statsList
+
 	ifaceListRef, _ := util.NewObjWalker(statsObj).Seek("/network/interfaces")
 	ifaceList := ifaceListRef.([]interface{})
 	var ifaceObj interface{}
@@ -131,36 +141,52 @@ func (f *core) loadMetricTemplate() error {
 	networkRef, _ := util.NewObjWalker(statsObj).Seek("/network")
 	network := networkRef.(map[string]interface{})
 	network["interfaces"] = map[string]interface{}{}
+
+	// convert filesystem list to a map
+	fsListRef, _ := util.NewObjWalker(statsObj).Seek("/filesystem")
+	fsList := fsListRef.([]interface{})
+	var fsObj interface{}
+	fsObj, fsList = fsList[0], fsList[1:]
+	statsMap := statsObj.(map[string]interface{})
+	statsMap["filesystem"] = map[string]interface{} {}
+
 	// extract template mappings
 	////FIXME:REMOVEIT
-	//pri("\n\n\nthe statsObj", statsObj)
+	pri("\n\n\nthe statsObj", statsObj)
 	//pri("\nthe templateObj", templateObj)
 	//pri("\nthe ifaceObj", ifaceObj)
 	mapToStats := extractMapping(statsObj)
 	mapToDocker := extractMapping(templateObj)
 	mapToIface := extractMapping(ifaceObj)
+	mapToFs := extractMapping(fsObj)
 	////FIXME:REMOVEIT
 	//pri("\n\n\nthe mapToStats", mapToStats)
 	//pri("\nthe mapToDocker", mapToDocker)
 	//pri("\nthe mapToDocker", mapToIface)
+	pri("\nthe mapToFs", mapToFs)
 	// replace the template positions with default values
 	applyDefaults(statsObj, mapToStats)
 	applyDefaults(templateObj, mapToDocker)
 	applyDefaults(ifaceObj, mapToIface)
+	applyDefaults(fsObj, mapToFs)
 	////FIXME:REMOVEIT
 	//pri("\n\n\nthe statsObj-1", statsObj)
 	//pri("\nthe templateObj-1", templateObj)
 	//pri("\nthe ifaceObj-1", ifaceObj)
+	pri("\nthe fsObj-1", fsObj)
 	statsTemplate, _ := json.Marshal(statsObj)
 	dockerTemplate, _ := json.Marshal(templateObj)
 	ifaceTemplate, _ := json.Marshal(ifaceObj)
+	fsTemplate, _ := json.Marshal(fsObj)
 	f.metricTemplate = MetricTemplate{
 		source:      string(dockerTemplate),
 		statsSource: string(statsTemplate),
 		ifaceSource: string(ifaceTemplate),
+		fsSource: string(fsTemplate),
 		mapToStats:  mapToStats,
 		mapToDocker: mapToDocker,
 		mapToIface:  mapToIface,
+		mapToFs: mapToFs,
 	}
 	return nil
 }
