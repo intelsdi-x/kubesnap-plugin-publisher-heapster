@@ -29,6 +29,7 @@ import (
 	"reflect"
 	"strings"
 	"time"
+	"regexp"
 )
 
 type processorContext struct {
@@ -64,6 +65,9 @@ func (f *processorContext) processMetrics0(metrics []plugin.MetricType) {
 				goto finish
 			}
 			if f.insertIntoIface(path, statsObj, &mt) {
+				goto finish
+			}
+			if f.insertIntoFs(path, statsObj, &mt) {
 				goto finish
 			}
 			if knownDocker && f.insertIntoCustomMetrics(path, dockerObj, &mt) {
@@ -119,12 +123,27 @@ func (f *processorContext) processMetrics0(metrics []plugin.MetricType) {
 func (f *processorContext) validateMetricWithMap(dockerPath, ns string, mapping map[string]map[string]string) ([]string, bool) {
 	for sourcePath, _ := range mapping {
 		if strings.HasSuffix(ns, sourcePath) {
-			convSpec := mapping[sourcePath]
-			if aliases, haveAliases := convSpec["aliases"]; haveAliases {
-				sourcePaths := append(strings.Split(aliases, ":"), sourcePath)
+			sourcePaths := []string {}
+			if aliases, haveAliases := mapping[sourcePath]["aliases"]; haveAliases {
+				sourcePaths = append(strings.Split(aliases, ":"), sourcePath)
+			} else {
+				sourcePaths = []string{sourcePath}
+			}
+			// validate source paths as they may have any pattern ("ptrn") filters
+			filtered := sourcePaths[:0]
+			for _, path := range sourcePaths {
+				if ptrn, havePtrn := mapping[path]["ptrn"]; havePtrn {
+					if matched, err := regexp.MatchString(ptrn, ns); !matched || err != nil {
+						continue
+					}
+				}
+				filtered = append(filtered, path)
+			}
+			sourcePaths = filtered
+			if len(sourcePaths) > 0 {
 				return sourcePaths, true
 			}
-			return []string{sourcePath}, true
+			return nil, false
 		}
 	}
 	customPath := ns[strings.LastIndex(ns, dockerPath)+len(dockerPath):]
@@ -140,6 +159,9 @@ func (f *processorContext) validateDockerMetric(dockerPath, ns string) ([]string
 func (f *processorContext) validateIfaceMetric(dockerPath, ns string) ([]string, bool) {
 	return f.validateMetricWithMap(dockerPath, ns, f.metricTemplate.mapToIface)
 }
+func (f *processorContext) validateFsMetric(dockerPath, ns string) ([]string, bool) {
+	return f.validateMetricWithMap(dockerPath, ns, f.metricTemplate.mapToFs)
+}
 
 func (f *processorContext) validateCustomMetric(metric *plugin.MetricType) (spec cadv.MetricSpec, validMetric bool) {
 	if _, spec, validMetric = f.extractOneCustomMetric(metric); validMetric {
@@ -151,6 +173,13 @@ func (f *processorContext) validateCustomMetric(metric *plugin.MetricType) (spec
 func (f *processorContext) extractIfaceMetric(metric *plugin.MetricType) (string, string) {
 	nsSplit := metric.Namespace().Strings()
 	// /intel/docker/DOCKER_ID/network/IFACE_ID/METRIC
+	lens := len(nsSplit)
+	return nsSplit[lens-2], nsSplit[lens-1]
+}
+
+func (f *processorContext) extractFsMetric(metric *plugin.MetricType) (string, string) {
+	nsSplit := metric.Namespace().Strings()
+	// /intel/docker/DOCKER_ID/filesystem/FS_ID/METRIC
 	lens := len(nsSplit)
 	return nsSplit[lens-2], nsSplit[lens-1]
 }
@@ -204,6 +233,21 @@ func (f *processorContext) fetchObjectForIface(statsMap map[string]interface{}, 
 		json.Unmarshal([]byte(f.metricTemplate.ifaceSource), &ifaceObj)
 		ifacesMap[ifaceName] = ifaceObj
 		return ifaceObj, true
+	}
+
+}
+
+func (f *processorContext) fetchObjectForFs(statsMap map[string]interface{}, metric *plugin.MetricType) (map[string]interface{}, bool) {
+	fsMapRef, _ := util.NewObjWalker(statsMap).Seek("/filesystem")
+	fsMap := fsMapRef.(map[string]interface{})
+	fsName, _ := f.extractFsMetric(metric)
+	if fs, haveFs := fsMap[fsName]; haveFs {
+		return fs.(map[string]interface{}), true
+	} else {
+		var fsObj map[string]interface{}
+		json.Unmarshal([]byte(f.metricTemplate.fsSource), &fsObj)
+		fsMap[fsName] = fsObj
+		return fsObj, true
 	}
 
 }
@@ -428,6 +472,23 @@ func (f *processorContext) insertIntoIface(dockerPath string, statsObj map[strin
 	}
 }
 
+func (f *processorContext) insertIntoFs(dockerPath string, statsObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
+	ns := metric.Namespace().String()
+	if sourcePaths, isFsMetric := f.validateFsMetric(dockerPath, ns); !isFsMetric {
+		return false
+	} else {
+		fsObj, _ := f.fetchObjectForFs(statsObj, metric)
+		for _, sourcePath := range sourcePaths {
+			targetPath := f.metricTemplate.mapToFs[sourcePath]["target"]
+			metricParent, _ := util.NewObjWalker(fsObj).Seek(filepath.Dir(targetPath))
+			metricParentMap := metricParent.(map[string]interface{})
+			metricParentMap[filepath.Base(targetPath)] = metric.Data()
+			didInsert = true
+		}
+		return true
+	}
+}
+
 func (f *processorContext) insertIntoDocker(dockerPath string, dockerObj map[string]interface{}, metric *plugin.MetricType) (didInsert bool) {
 	ns := metric.Namespace().String()
 	didInsert = false
@@ -505,7 +566,7 @@ func (f *processorContext) mergeStatsForDocker(id, path string) {
 		// no stats for that docker were allocated in this round of processing
 		return
 	}
-	// convert iface map to iface list, as expected by consumers
+	// convert iface map to iface list, as expected by consumers of the REST API
 	networkRef, _ := util.NewObjWalker(statsObj).Seek("/network")
 	ifaceMapRef, _ := util.NewObjWalker(networkRef).Seek("/interfaces")
 	ifaceMap := ifaceMapRef.(map[string]interface{})
@@ -515,6 +576,15 @@ func (f *processorContext) mergeStatsForDocker(id, path string) {
 		ifaceList = append(ifaceList, ifaceObj)
 	}
 	networkMap["interfaces"] = ifaceList
+
+	// convert fs map to fs list, as expected by consumers
+	fsMapRef, _ := util.NewObjWalker(statsObj).Seek("/filesystem")
+	fsMap := fsMapRef.(map[string]interface{})
+	fsList := []interface{} {}
+	for _, fsObj := range fsMap {
+		fsList = append(fsList, fsObj)
+	}
+	statsObj["filesystem"] = fsList
 
 	// add in-progress stats element to statsList
 	statsList := dockerObj["stats"].([]interface{})

@@ -78,15 +78,15 @@
 				"tx_dropped":"__tmpl|/network/tx_dropped|0|int",
 				"interfaces":[
 					{
-						"name":"__tmpl|/name||str",
-						"rx_bytes":"__tmpl|/rx_bytes|0|int",
-						"rx_packets":"__tmpl|/rx_packets|0|int",
-						"rx_errors":"__tmpl|/rx_errors|0|int",
-						"rx_dropped":"__tmpl|/rx_dropped|0|int",
-						"tx_bytes":"__tmpl|/tx_bytes|0|int",
-						"tx_packets":"__tmpl|/tx_packets|0|int",
-						"tx_errors":"__tmpl|/tx_errors|0|int",
-						"tx_dropped":"__tmpl|/tx_dropped|0|int"
+						"name":"__tmpl|/network/.../name||str",
+						"rx_bytes":"__tmpl|/network/.../rx_bytes|0|int",
+						"rx_packets":"__tmpl|/network/.../rx_packets|0|int",
+						"rx_errors":"__tmpl|/network/.../rx_errors|0|int",
+						"rx_dropped":"__tmpl|/network/.../rx_dropped|0|int",
+						"tx_bytes":"__tmpl|/network/.../tx_bytes|0|int",
+						"tx_packets":"__tmpl|/network/.../tx_packets|0|int",
+						"tx_errors":"__tmpl|/network/.../tx_errors|0|int",
+						"tx_dropped":"__tmpl|/network/.../tx_dropped|0|int"
 					}
 				],
 				"tcp":{
@@ -103,39 +103,39 @@
 					"Closing":"__tmpl|/connection/tcp/closing|0|int"
 				},
 				"tcp6":{
-					"Established":"__tmpl|/connection/tcp/established|0|int",
-					"SynSent":"__tmpl|/connection/tcp/syn_sent|0|int",
-					"SynRecv":"__tmpl|/connection/tcp/syn_recv|0|int",
-					"FinWait1":"__tmpl|/connection/tcp/fin_wait1|0|int",
-					"FinWait2":"__tmpl|/connection/tcp/fin_wait2|0|int",
-					"TimeWait":"__tmpl|/connection/tcp/time_wait|0|int",
-					"Close":"__tmpl|/connection/tcp/close|0|int",
-					"CloseWait":"__tmpl|/connection/tcp/close_wait|0|int",
-					"LastAck":"__tmpl|/connection/tcp/last_ack|0|int",
-					"Listen":"__tmpl|/connection/tcp/listen|0|int",
-					"Closing":"__tmpl|/connection/tcp/closing|0|int"
+					"Established":"__tmpl|/connection/tcp6/established|0|int",
+					"SynSent":"__tmpl|/connection/tcp6/syn_sent|0|int",
+					"SynRecv":"__tmpl|/connection/tcp6/syn_recv|0|int",
+					"FinWait1":"__tmpl|/connection/tcp6/fin_wait1|0|int",
+					"FinWait2":"__tmpl|/connection/tcp6/fin_wait2|0|int",
+					"TimeWait":"__tmpl|/connection/tcp6/time_wait|0|int",
+					"Close":"__tmpl|/connection/tcp6/close|0|int",
+					"CloseWait":"__tmpl|/connection/tcp6/close_wait|0|int",
+					"LastAck":"__tmpl|/connection/tcp6/last_ack|0|int",
+					"Listen":"__tmpl|/connection/tcp6/listen|0|int",
+					"Closing":"__tmpl|/connection/tcp6/closing|0|int"
 				}
 			},
 			"filesystem":[
 				{
-					"device":"__tmpl|/filesystem/device_name||str",
-					"type":"__tmpl|/filesystem/type|vfs|str",
-					"capacity":"__tmpl|/filesystem/capacity|0|int",
-					"usage":"__tmpl|/filesystem/usage|0|int",
-					"base_usage":"__tmpl|/filesystem/base_usage|0|int",
-					"available":"__tmpl|/filesystem/available|0|int",
-					"inodes_free":"__tmpl|/filesystem/inodes_free|0|int",
-					"reads_completed":"__tmpl|/filesystem/reads_completed|0|int",
-					"reads_merged":"__tmpl|/filesystem/reads_merged|0|int",
-					"sectors_read":"__tmpl|/filesystem/sectors_read|0|int",
-					"read_time":"__tmpl|/filesystem/read_time|0|int",
-					"writes_completed":"__tmpl|/filesystem/writes_completed|0|int",
-					"writes_merged":"__tmpl|/filesystem/writes_merged|0|int",
-					"sectors_written":"__tmpl|/filesystem/sectors_written|0|int",
-					"write_time":"__tmpl|/filesystem/write_time|0|int",
-					"io_in_progress":"__tmpl|/filesystem/io_in_progress|0|int",
-					"io_time":"__tmpl|/filesystem/io_time|0|int",
-					"weighted_io_time": "__tmpl|/filesystem/weighted_io_time|0|int"
+					"device":"__tmpl|/filesystem/.../device_name||str",
+					"type":"__tmpl|/filesystem/.../type|vfs|str",
+					"capacity":"__tmpl|/filesystem/.../capacity|0|int",
+					"usage":"__tmpl|/filesystem/.../usage|0|int",
+					"base_usage":"__tmpl|/filesystem/.../base_usage|0|int",
+					"available":"__tmpl|/filesystem/.../available|0|int",
+					"inodes_free":"__tmpl|/filesystem/.../inodes_free|0|int",
+					"reads_completed":"__tmpl|/filesystem/.../reads_completed|0|int",
+					"reads_merged":"__tmpl|/filesystem/.../reads_merged|0|int",
+					"sectors_read":"__tmpl|/filesystem/.../sectors_read|0|int",
+					"read_time":"__tmpl|/filesystem/.../read_time|0|int",
+					"writes_completed":"__tmpl|/filesystem/.../writes_completed|0|int",
+					"writes_merged":"__tmpl|/filesystem/.../writes_merged|0|int",
+					"sectors_written":"__tmpl|/filesystem/.../sectors_written|0|int",
+					"write_time":"__tmpl|/filesystem/.../write_time|0|int",
+					"io_in_progress":"__tmpl|/filesystem/.../io_in_progress|0|int",
+					"io_time":"__tmpl|/filesystem/.../io_time|0|int",
+					"weighted_io_time": "__tmpl|/filesystem/.../weighted_io_time|0|int"
 				}
 			],
 			"custom_metrics": {
