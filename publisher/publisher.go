@@ -228,8 +228,8 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 }
 
 func init() {
-	if os.Getenv("DISABLE_PRI") == "1" {
-	//if os.Getenv("ENABLE_PRI") != "1" {
+	//if os.Getenv("DISABLE_PRI") == "1" {
+	if os.Getenv("ENABLE_PRI") != "1" {
 		pri = func(_ string, _ ...interface{}) {
 			// nop
 		}
