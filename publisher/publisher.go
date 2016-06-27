@@ -42,7 +42,7 @@ import (
 
 const (
 	name       = "heapster"
-	version    = 504
+	version    = 1
 	pluginType = plugin.PublisherPluginType
 )
 
