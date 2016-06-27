@@ -172,7 +172,7 @@ func Stats(server *server, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 	w.WriteHeader(http.StatusOK)
 	res := buildStatsResponse(server, &stats)
-	logger.Infof("Received request: %+v; current time in seconds: %v, current time: %s, processing stats: %+v", stats, time.Now().Unix(), time.Now(), server.stats)
+	//logger.Infof("Received request: %+v; current time in seconds: %v, current time: %s, processing stats: %+v", stats, time.Now().Unix(), time.Now(), server.stats)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		panic(err)
 	}
