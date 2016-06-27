@@ -34,6 +34,7 @@ import (
 	"sync"
 	"time"
 	"sort"
+	"os"
 )
 
 var logger *log.Logger
@@ -62,6 +63,7 @@ func EnsureStarted(state *exchange.InnerState, port int) {
 }
 
 func ServerFunc(server *server) {
+	log.SetOutput(os.Stderr)
 	logger = log.New()
 	router := mux.NewRouter().StrictSlash(true)
 	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(server, Stats))
