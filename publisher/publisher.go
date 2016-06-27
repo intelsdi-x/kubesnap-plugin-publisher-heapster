@@ -139,7 +139,6 @@ func (f *core) Publish(contentType string, content []byte, config map[string]cty
 			panic(r)
 		}
 	}()
-	f.ensureInitialized(config)
         initErr := f.ensureInitialized(config)
         if initErr != nil {
              f.logger.Printf("Server not initialized, error=%v\n", initErr)
