@@ -114,7 +114,8 @@ func (f *processorContext) processMetrics0(metrics []plugin.MetricType) {
 	}
 	f.stats.statsRxRecently = stats_statsPcsdNum
 	f.stats.statsRxTotal += stats_statsPcsdNum
-	f.logger.Infof("processing stats: %+v\n", f.stats)
+
+	//f.logger.Infof("processing stats: %+v\n", f.stats)
 }
 
 
