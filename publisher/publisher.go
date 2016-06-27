@@ -140,6 +140,11 @@ func (f *core) Publish(contentType string, content []byte, config map[string]cty
 		}
 	}()
 	f.ensureInitialized(config)
+        initErr := f.ensureInitialized(config)
+        if initErr != nil {
+             f.logger.Printf("Server not initialized, error=%v\n", initErr)
+             return nil
+        }
 	var metrics []plugin.MetricType
 
 	switch contentType {
@@ -164,7 +169,7 @@ func Meta() *plugin.PluginMeta {
 		name, version, pluginType,
 		[]string{plugin.SnapGOBContentType},
 		[]string{plugin.SnapGOBContentType},
-		plugin.ConcurrencyCount(999))
+                plugin.Exclusive(true))
 }
 
 func (f *core) GetConfigPolicy() (*cpolicy.ConfigPolicy, error) {
@@ -196,8 +201,9 @@ func (m ConfigMap) GetStr(key string, defValue string) string {
 	}
 }
 
-func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
+func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) error {
 	configMap := ConfigMap(config)
+        var serr error
 	f.once.Do(func() {
 		defer func() {
 			if r := recover(); r != nil {
@@ -223,8 +229,9 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) {
 		} else {
 			f.tstampDelta = tstampDelta
 		}
-		server.EnsureStarted(f.state, serverPort)
+		serr = server.EnsureStarted(f.state, serverPort)
 	})
+        return serr
 }
 
 func init() {

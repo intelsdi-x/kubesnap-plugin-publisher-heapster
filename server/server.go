@@ -55,19 +55,22 @@ type serverStats struct {
 	statsDdLast	int
 }
 
-func EnsureStarted(state *exchange.InnerState, port int) {
+func EnsureStarted(state *exchange.InnerState, port int) error {
+        var err error
 	once.Do(func() {
 		server := server{state: state, port: port}
-		go ServerFunc(&server)
+                go func () { err = ServerFunc(&server) }()
 	})
+        return err
 }
 
-func ServerFunc(server *server) {
+func ServerFunc(server *server) error {
 	log.SetOutput(os.Stderr)
 	logger = log.New()
 	router := mux.NewRouter().StrictSlash(true)
 	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(server, Stats))
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", server.port), router))
+        err := http.ListenAndServe(fmt.Sprintf(":%d", server.port), router)
+        return err
 }
 
 func copyFlat(data map[string]interface{}) map[string]interface{} {
