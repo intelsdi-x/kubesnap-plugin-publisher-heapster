@@ -142,7 +142,6 @@ func (f *core) Publish(contentType string, content []byte, config map[string]cty
         initErr := f.ensureInitialized(config)
         if initErr != nil {
              f.logger.Printf("Server not initialized, error=%v\n", initErr)
-             return nil
         }
 	var metrics []plugin.MetricType
 
