@@ -42,6 +42,7 @@ var once sync.Once
 
 type server struct {
 	state *exchange.InnerState
+	addr string
 	port int
 	stats serverStats
 }
@@ -55,10 +56,10 @@ type serverStats struct {
 	statsDdLast	int
 }
 
-func EnsureStarted(state *exchange.InnerState, port int) error {
+func EnsureStarted(state *exchange.InnerState, addr string, port int) error {
         var err error
 	once.Do(func() {
-		server := server{state: state, port: port}
+		server := server{state: state, addr: addr, port: port}
                 go func () { err = ServerFunc(&server) }()
 	})
         return err
@@ -69,7 +70,9 @@ func ServerFunc(server *server) error {
 	logger = log.New()
 	router := mux.NewRouter().StrictSlash(true)
 	router.Methods("POST").Path("/stats/container/").HandlerFunc(wrapper(server, Stats))
-        err := http.ListenAndServe(fmt.Sprintf(":%d", server.port), router)
+	listenAddr := fmt.Sprintf("%s:%d", server.addr, server.port)
+	log.WithField("listen_addr", listenAddr).Info("Server will now listen")
+        err := http.ListenAndServe(listenAddr, router)
         return err
 }
 

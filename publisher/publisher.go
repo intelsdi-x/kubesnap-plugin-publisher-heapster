@@ -50,6 +50,7 @@ const (
 	dockerMetricPrefix = "/intel/docker"
 	defStatsDepth      = 10
 	defServerPort      = 8777
+	defServerAddr      = ""
 	defStatsSpanStr    = "10m"
 	defStatsSpan       = 10 * time.Minute
 	defExportTmplFile  = "builtin"
@@ -57,6 +58,7 @@ const (
 	defTstampDelta     = 0
 	cfgStatsDepth      = "stats_depth"
 	cfgServerPort      = "server_port"
+	cfgServerAddr      = "server_addr"
 	cfgStatsSpan       = "stats_span"
 	cfgExportTmplFile  = "export_tmpl_file"
 	cfgTstampDelta     = "timestamp_delta"
@@ -210,6 +212,7 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) error {
 		}()
 		f.statsDepth = configMap.GetInt(cfgStatsDepth, defStatsDepth)
 		serverPort := configMap.GetInt(cfgServerPort, defServerPort)
+		serverAddr := configMap.GetStr(cfgServerAddr, defServerAddr)
 		statsSpanStr := configMap.GetStr(cfgStatsSpan, defStatsSpanStr)
 		if statsSpan, err := time.ParseDuration(statsSpanStr); err != nil {
 			f.statsSpan = defStatsSpan
@@ -227,7 +230,7 @@ func (f *core) ensureInitialized(config map[string]ctypes.ConfigValue) error {
 		} else {
 			f.tstampDelta = tstampDelta
 		}
-		serr = server.EnsureStarted(f.state, serverPort)
+		serr = server.EnsureStarted(f.state, serverAddr, serverPort)
 	})
         return serr
 }

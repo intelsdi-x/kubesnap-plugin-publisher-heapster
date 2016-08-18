@@ -25,13 +25,14 @@ Here is a sample task manifest utilizing the heapster publisher plugin:
               plugin_name: "heapster"
               config:
                 stats_depth: 0
+                server_addr: 127.0.0.1
                 server_port: 8777
                 stats_span: "10m"
                 export_tmpl_file: "builtin"
 ```
 
 Explanation:
-* this will setup heapster publisher to expose REST server at port :8777
+* this will setup heapster publisher to expose REST server at address 127.0.0.1:8777
 * publisher will keep a list of stats spanning 10 minutes
 * no limit on number of stats (`stats_depth: 0` means _no limit_)
 * will use builtin template file for metrics; (might have given a path
