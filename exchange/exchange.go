@@ -3,6 +3,7 @@ http://www.apache.org/licenses/LICENSE-2.0.txt
 
 
 Copyright 2016 Intel Corporation
+Copyright 2014 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,6 +18,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
+// Package contains code from Kubernetes Heapster (https://github.com/kubernetes/heapster).
 package exchange
 
 import (
